@@ -2,7 +2,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createWorker } from "tesseract.js";
 import {
   STANDARD_GOVERNMENT_WARNING,
   compareLabelData,
@@ -196,35 +195,20 @@ const extractFromOcrText = (text: string): ExtractedLabelData => {
   };
 };
 
-async function preprocessImageForOCR(file: File | Blob): Promise<Blob> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d")!;
-
-      const scale = 2;
-      canvas.width = img.width * scale;
-      canvas.height = img.height * scale;
-
-      ctx.scale(scale, scale);
-      ctx.filter = "contrast(1.5) brightness(1.1) saturate(0)";
-      ctx.drawImage(img, 0, 0);
-
-      canvas.toBlob(
-        (blob) => {
-          resolve(blob!);
-          URL.revokeObjectURL(url);
-        },
-        "image/png",
-        1.0,
-      );
-    };
-
-    img.src = url;
+async function ocrImage(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+  const res = await fetch("/api/ocr", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ imageBase64: base64, mimeType: file.type }),
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || res.statusText);
+  }
+  const data = await res.json();
+  return data.text ?? "";
 }
 
 function ThumbnailCard({
@@ -418,23 +402,9 @@ export default function Home() {
       setResults([]);
       setError(null);
       setCatastrophicError(null);
-      setProgressMessage("Initializing OCR engine...");
+      setProgressMessage("Reading label...");
       setProcessingTotal(files.length);
       setProcessingCurrent(0);
-
-      let worker;
-      try {
-        worker = await createWorker("eng");
-      } catch (e) {
-        setCatastrophicError(
-          "OCR couldn't start. Your images are safe—try again or use a supported browser.",
-        );
-        setIsProcessing(false);
-        setProcessingCurrent(0);
-        setProcessingTotal(0);
-        setProgressMessage(null);
-        return;
-      }
 
       try {
         const newResults: VerificationResult[] = [];
@@ -449,10 +419,10 @@ export default function Home() {
           setProgressMessage(`Reading label ${index + 1} of ${files.length}...`);
 
           try {
-            const preprocessed = await preprocessImageForOCR(file);
-            const { data } = await worker.recognize(preprocessed);
-            const ocrText = data.text ?? "";
-            console.log("RAW OCR TEXT:", ocrText);
+            const ocrText = await ocrImage(file);
+            if (process.env.NODE_ENV === "development") {
+              console.log("RAW OCR TEXT:", ocrText);
+            }
             const extracted = extractFromOcrText(ocrText);
             const checks = compareLabelData(appData, extracted);
             const durationMs = performance.now() - start;
@@ -480,7 +450,6 @@ export default function Home() {
           "OCR processing stopped unexpectedly. Your images are safe—try again or contact support.",
         );
       } finally {
-        await worker.terminate();
         setIsProcessing(false);
         setProgressMessage(null);
         setProcessingCurrent(0);
@@ -511,13 +480,12 @@ export default function Home() {
       const file = fileOverride ?? fileList[resultIndex];
       if (!file) return;
       setReplacingResultIndex(resultIndex);
-      const worker = await createWorker("eng");
       try {
         const start = performance.now();
-        const preprocessed = await preprocessImageForOCR(file);
-        const { data } = await worker.recognize(preprocessed);
-        const ocrText = data.text ?? "";
-        console.log("RAW OCR TEXT:", ocrText);
+        const ocrText = await ocrImage(file);
+        if (process.env.NODE_ENV === "development") {
+          console.log("RAW OCR TEXT:", ocrText);
+        }
         const extracted = extractFromOcrText(ocrText);
         const checks = compareLabelData(applicationData, extracted);
         const durationMs = performance.now() - start;
@@ -541,7 +509,6 @@ export default function Home() {
           return next;
         });
       } finally {
-        await worker.terminate();
         setReplacingResultIndex(null);
       }
     },
@@ -1981,332 +1948,5 @@ export default function Home() {
     );
   }
 
-  return (
-    <div className="min-h-screen bg-[#F5F7FA] text-slate-700">
-      <div className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-8 sm:px-8">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-slate-800 sm:text-3xl">
-              TTB label comparison
-            </h1>
-            <p className="mt-1 text-sm text-slate-700">
-              Compare an approved application record to the printed label image.
-            </p>
-          </div>
-          <div className="flex flex-col items-start gap-1 text-xs text-slate-600 sm:items-end">
-            <span className="rounded-md bg-gray-200 px-3 py-1 font-medium text-slate-700">
-              OCR runs in the browser
-            </span>
-            <span className="text-[11px]">
-              Results are for human review. Final decisions remain with agents.
-            </span>
-          </div>
-        </header>
-
-        {error ? (
-          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-            {error}
-          </div>
-        ) : null}
-
-        {progressMessage ? (
-          <div className="flex items-center gap-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-slate-800">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
-            <span>{progressMessage}</span>
-          </div>
-        ) : null}
-
-        <div className="flex flex-wrap gap-2 text-xs font-medium">
-          <span className="mr-1 text-[11px] uppercase tracking-wide text-slate-500">
-            Mode
-          </span>
-          <button
-            type="button"
-            onClick={() => setMode("single")}
-            className={`rounded-md px-3 py-2 text-sm ${
-              mode === "single"
-                ? "bg-slate-800 text-white"
-                : "bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-gray-50"
-            }`}
-          >
-            Single label
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("batch")}
-            className={`rounded-md px-3 py-2 text-sm ${
-              mode === "batch"
-                ? "bg-slate-800 text-white"
-                : "bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-gray-50"
-            }`}
-          >
-            Batch (multiple labels)
-          </button>
-        </div>
-
-        <main className="grid gap-6 md:grid-cols-[minmax(0,2fr),minmax(0,3fr)]">
-          <section className="flex flex-col gap-4">
-            <div className="rounded-md bg-white p-5 shadow-sm ring-1 ring-slate-200">
-              <h2 className="text-sm font-semibold text-slate-900">
-                Step 1 of 2 · Label image{mode === "batch" ? "s" : ""}
-              </h2>
-              <p className="mt-1 text-xs text-slate-600">
-                Upload a clear image of the label. This area is required before
-                running a comparison.
-              </p>
-              <label className="mt-4 flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-slate-400 bg-gray-50 px-4 py-8 text-center text-sm text-slate-700">
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple={mode === "batch"}
-                  className="hidden"
-                  onChange={(event) => handleFilesSelected(event.target.files)}
-                />
-                <span className="text-base font-semibold text-slate-900">
-                  Select label image{mode === "batch" ? "s" : ""}
-                </span>
-                <span className="mt-1 text-xs text-slate-600">
-                  {mode === "batch"
-                    ? "You can select multiple images in one action."
-                    : "One label image at a time."}
-                </span>
-              </label>
-
-              {fileList.length ? (
-                <div className="mt-4 space-y-2">
-                  <p className="text-xs font-medium text-slate-800">
-                    Selected file{fileList.length > 1 ? "s" : ""} ({fileList.length})
-                  </p>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    {fileList.map((file) => (
-                      <figure
-                        key={file.name + file.lastModified}
-                        className="flex flex-col gap-1 rounded-md border border-gray-200 bg-gray-50 p-2"
-                      >
-                        <img
-                          src={URL.createObjectURL(file)}
-                          alt={file.name}
-                          className="h-24 w-full object-contain"
-                        />
-                        <figcaption className="truncate text-[11px] text-slate-700">
-                          {file.name}
-                        </figcaption>
-                      </figure>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="mt-4 flex justify-end">
-                <button
-                  type="button"
-                  disabled={!fileList.length}
-                  onClick={() => setStep(2)}
-                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-                >
-                  Continue to application data
-                </button>
-              </div>
-            </div>
-
-            {mode === "single" ? (
-              <div className="rounded-md bg-white p-5 shadow-sm ring-1 ring-slate-200">
-                <h2 className="text-sm font-semibold text-slate-900">
-                  Step 2 of 2 · Application data (reference record)
-                </h2>
-                <p className="mt-1 text-xs text-slate-600">
-                  Confirm the key fields from the approved application record.
-                </p>
-                <form
-                  className="mt-3 space-y-3 text-xs"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void handleRunSingle();
-                  }}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <button
-                      type="button"
-                      className="rounded-md bg-gray-100 px-3 py-2 text-xs font-medium text-slate-800 ring-1 ring-gray-300 hover:bg-gray-200"
-                      onClick={() => setApplicationData(defaultApplicationData)}
-                    >
-                      Reset to standard example values
-                    </button>
-                    <button
-                      type="button"
-                      className="text-[11px] text-blue-700 underline-offset-2 hover:underline"
-                      onClick={() => setStep(1)}
-                    >
-                      Back to label image
-                    </button>
-                  </div>
-
-                  <div className="rounded-md bg-gray-50 px-3 py-3">
-                    <div>
-                      <label className="block text-[11px] font-medium text-slate-700">
-                        Brand name
-                      </label>
-                      <input
-                        type="text"
-                        value={applicationData.brandName}
-                        onChange={(event) =>
-                          setApplicationData((current) => ({
-                            ...current,
-                            brandName: event.target.value,
-                          }))
-                        }
-                        className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-xs text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-                    <p className="mt-1 text-[10px] text-slate-500">
-                      Primary brand name as shown on the approved application.
-                    </p>
-                  </div>
-
-                  {step === 2 && (
-                    <details className="rounded-md bg-gray-50 px-3 py-3 text-xs text-slate-700">
-                      <summary className="cursor-pointer select-none text-[11px] font-medium text-slate-700">
-                        Additional fields
-                      </summary>
-                      <div className="mt-3 space-y-3">
-                        <div>
-                          <label className="block text-[11px] font-medium text-slate-700">
-                            Class / type
-                          </label>
-                          <input
-                            type="text"
-                            value={applicationData.classType}
-                            onChange={(event) =>
-                              setApplicationData((current) => ({
-                                ...current,
-                                classType: event.target.value,
-                              }))
-                            }
-                            className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-xs text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                          />
-                        </div>
-
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div>
-                            <label className="block text-[11px] font-medium text-slate-700">
-                              Alcohol content
-                            </label>
-                            <input
-                              type="text"
-                              value={applicationData.alcoholContent}
-                              onChange={(event) =>
-                                setApplicationData((current) => ({
-                                  ...current,
-                                  alcoholContent: event.target.value,
-                                }))
-                              }
-                              className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-xs text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[11px] font-medium text-slate-700">
-                              Net contents
-                            </label>
-                            <input
-                              type="text"
-                              value={applicationData.netContents}
-                              onChange={(event) =>
-                                setApplicationData((current) => ({
-                                  ...current,
-                                  netContents: event.target.value,
-                                }))
-                              }
-                              className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-xs text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-[11px] font-medium text-slate-700">
-                            Government health warning (exact text)
-                          </label>
-                          <textarea
-                            value={applicationData.governmentWarning}
-                            onChange={(event) =>
-                              setApplicationData((current) => ({
-                                ...current,
-                                governmentWarning: event.target.value,
-                              }))
-                            }
-                            rows={5}
-                            className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-xs text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                          />
-                          <p className="mt-1 text-[10px] text-slate-500">
-                            This should match the standard TTB warning text. The
-                            tool compares it word-for-word, ignoring spacing and
-                            punctuation.
-                          </p>
-                        </div>
-                      </div>
-                    </details>
-                  )}
-
-                  <div className="pt-2">
-                    <button
-                      type="submit"
-                      disabled={isProcessing || step !== 2}
-                      className="inline-flex w-full items-center justify-center rounded-md bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-                    >
-                      {isProcessing ? "Checking label..." : "Run comparison"}
-                    </button>
-                    <p className="mt-1 text-[10px] text-slate-500">
-                      Target: results within ~5 seconds per simple label.
-                    </p>
-                  </div>
-                </form>
-              </div>
-            ) : (
-              <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-                <h2 className="text-sm font-semibold text-slate-900">
-                  2. Batch application data (JSON)
-                </h2>
-                <p className="mt-1 text-xs text-slate-500">
-                  Paste an array of application objects. Each label image will
-                  be matched by position in the list.
-                </p>
-                <textarea
-                  value={batchJson}
-                  onChange={(event) => setBatchJson(event.target.value)}
-                  rows={12}
-                  className="mt-2 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
-                  placeholder={`[
-  {
-    "brandName": "",
-    "classType": "Kentucky Straight Bourbon Whiskey",
-    "alcoholContent": "45% Alc./Vol. (90 Proof)",
-    "netContents": "750 mL",
-    "governmentWarning": "${STANDARD_GOVERNMENT_WARNING.replace(/"/g, '\\"')}"
-  }
-]`}
-                />
-                <p className="mt-1 text-[10px] text-slate-500">
-                  If there are more labels than application records, the last
-                  record will be reused.
-                </p>
-                <div className="pt-3">
-                  <button
-                    type="button"
-                    disabled={isProcessing}
-                    onClick={() => void handleRunBatch()}
-                    className="inline-flex w-full items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-                  >
-                    {isProcessing
-                      ? "Checking batch..."
-                      : "Run batch verification"}
-                  </button>
-                </div>
-              </div>
-            )}
-          </section>
-
-        </main>
-      </div>
-    </div>
-  );
 }
 

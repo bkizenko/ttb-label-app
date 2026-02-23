@@ -47,6 +47,10 @@ npm run dev
 
 Then open `http://localhost:3000` in your browser.
 
+## Deployment
+
+Live demo: [https://ttb-label-p9mg5uf7r-bkizenkos-projects.vercel.app/](https://ttb-label-p9mg5uf7r-bkizenkos-projects.vercel.app/)
+
 For the best experience during this prototype:
 
 - Use reasonably sized label images (e.g. under ~5 MB).
@@ -84,8 +88,6 @@ For the best experience during this prototype:
      - The expected value from the application.
      - The value detected on the label (if any).
      - Short notes to guide human judgment.
-   - You can also expand "Show raw OCR text" for troubleshooting.
-
 ### Technical choices and rationale
 
 - **Next.js + React + TypeScript**

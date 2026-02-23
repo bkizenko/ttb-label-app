@@ -237,6 +237,30 @@ describe("compareLabelData", () => {
     expect(netCheck?.status).toBe("missing");
   });
 
+  it("partial class/type match via substring", () => {
+    const result = compareLabelData(
+      {
+        brandName: "Test",
+        classType: "Kentucky Straight Bourbon Whiskey",
+        alcoholContent: "45%",
+        netContents: "750 mL",
+        governmentWarning: STANDARD_GOVERNMENT_WARNING,
+      },
+      {
+        brandName: "Test",
+        classType: "Kentucky Straight",
+        alcoholContent: "45%",
+        netContents: "750 mL",
+        governmentWarningText: STANDARD_GOVERNMENT_WARNING,
+        hasGovernmentWarningHeaderExact: true,
+      },
+    );
+
+    const classCheck = result.find((c) => c.field === "classType");
+    expect(classCheck?.status).toBe("match");
+    expect(classCheck?.notes).toContain("Partial OCR");
+  });
+
   it("includes notes when match is high but not perfect (e.g. minor typo)", () => {
     const extracted: ExtractedLabelData = {
       brandName: "Stone's Thow", // typo: Thow vs Throw
