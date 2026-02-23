@@ -171,6 +171,13 @@ export default function Home() {
     null,
   );
   const [browserBannerDismissed, setBrowserBannerDismissed] = useState(false);
+  const [reviewMode, setReviewMode] = useState<
+    "summary" | "reviewing" | "complete"
+  >("summary");
+  const [currentReviewIndex, setCurrentReviewIndex] = useState(0);
+  const [manualOverrides, setManualOverrides] = useState<
+    Record<string, string>
+  >({});
   const replaceFileInputRef = useRef<HTMLInputElement>(null);
   const [replacingResultIndex, setReplacingResultIndex] = useState<
     number | null
@@ -487,6 +494,13 @@ export default function Home() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [step, isProcessing, fileList.length, results.length]);
+
+  /* Reset one-at-a-time review when switching labels in batch */
+  useEffect(() => {
+    setReviewMode("summary");
+    setCurrentReviewIndex(0);
+    setManualOverrides({});
+  }, [currentResultIndex]);
 
   const renderProgress = () => {
     const steps = [1, 2, 3] as const;
@@ -1226,6 +1240,12 @@ export default function Home() {
       activeResult.checks.some(
         (check) => check.status === "mismatch" || check.status === "missing",
       );
+    const issueCount =
+      activeIsSuccess
+        ? activeResult.checks.filter(
+            (c) => c.status === "mismatch" || c.status === "missing",
+          ).length
+        : 0;
 
     return (
       <>
@@ -1486,226 +1506,417 @@ export default function Home() {
               </section>
             ) : (
               <>
-                {/* Hero status card */}
-                <section
-                  className={`animate-fade-scale-in flex min-h-[120px] items-center rounded-[20px] p-6 text-white depth-3 ${
-                    anyIssue
-                      ? "bg-gradient-to-r from-[#FF9F0A] to-[#FF9500]"
-                      : "bg-gradient-to-r from-[#30D158] to-[#28CD4F]"
-                  }`}
-                  style={{ animationDuration: "0.5s", animationTimingFunction: "cubic-bezier(0.34, 1.56, 0.64, 1)" }}
-                >
-                  <div className="step3-hero-icon flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-4xl shadow-sm">
-                    {anyIssue ? "!" : "✓"}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[28px] font-semibold tracking-tight drop-shadow-sm">
-                      {anyIssue
-                        ? "Some fields need review"
-                        : "Label matches the application data"}
-                    </p>
-                    <p className="mt-1 text-[14px] opacity-90">
-                      Processing time: {activeResult.status === "success" ? activeResult.durationMs.toFixed(0) : ""} ms
-                    </p>
-                  </div>
-                </section>
+                {(() => {
+                  const FIELD_LABEL_MAP: Record<string, string> = {
+                    brandName: "Brand name",
+                    classType: "Class/Type",
+                    alcoholContent: "Alcohol content",
+                    netContents: "Net contents",
+                    governmentWarning: "Government warning text",
+                    governmentWarningHeader: "GOVERNMENT WARNING header",
+                  };
+                  const fieldsNeedingReview = activeResult.checks.filter(
+                    (c) =>
+                      c.status === "mismatch" || c.status === "missing",
+                  );
+                  const matchCount = activeResult.checks.filter(
+                    (c) => c.status === "match",
+                  ).length;
+                  const totalReviewCount = fieldsNeedingReview.length;
+                  const currentCheck =
+                    totalReviewCount > 0
+                      ? fieldsNeedingReview[currentReviewIndex]
+                      : null;
+                  const isLastField =
+                    totalReviewCount > 0 &&
+                    currentReviewIndex >= totalReviewCount - 1;
 
-                {/* Image + checklist – 40px gap, content ~70% */}
-                <section className="flex flex-col gap-10 lg:flex-row">
-                  <div className="flex w-full flex-col items-center lg:w-1/3">
-                    <div
-                      className="w-full max-w-xs rounded-[20px] bg-white p-4 depth-1"
-                      style={{ border: "1px solid rgba(0,0,0,0.06)" }}
-                    >
-                      <p className="text-[14px] font-medium text-[#1C1C1E]">
-                        Label image
-                      </p>
-                      <p className="mt-1 text-[14px] text-[#8E8E93]">
-                        {activeResult.fileName}
-                      </p>
-                      {fileList[safeIndex] ? (
-                        <img
-                          src={URL.createObjectURL(fileList[safeIndex]!)}
-                          alt={activeResult.fileName}
-                          className="mt-3 w-full rounded-[16px] bg-[#F2F2F7] object-contain"
-                          style={{ border: "1px solid rgba(0,0,0,0.06)" }}
-                        />
-                      ) : null}
-                    </div>
-
-                    {results.length > 1 ? (
-                      <div className="mt-6 flex flex-col items-center gap-3">
-                        <p className="text-[14px] font-semibold text-[#1C1C1E]">
-                          Label {safeIndex + 1} of {results.length}
-                        </p>
-                        <div className="flex items-center gap-4">
-                          <button
-                            type="button"
-                            aria-label="Previous label"
-                            disabled={safeIndex === 0}
-                            onClick={() =>
-                              setCurrentResultIndex((i) => Math.max(0, i - 1))
-                            }
-                            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-[#E5E5EA] bg-white text-[#1C1C1E] shadow-sm transition-all duration-150 hover:scale-[1.02] hover:shadow-md active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40"
+                  /* ——— SUMMARY: one card + one CTA ——— */
+                  if (reviewMode === "summary") {
+                    return (
+                      <section className="mx-auto flex max-w-[600px] flex-col gap-8">
+                        {results.length > 1 && (
+                          <p
+                            className="text-[15px] font-normal text-[#8E8E93]"
+                            style={{ letterSpacing: "-0.01em" }}
                           >
-                            <span className="text-xl">‹</span>
-                          </button>
-                          <div className="flex items-center gap-2">
-                            {results.map((_, dotIndex) => (
-                              <button
-                                key={dotIndex}
-                                type="button"
-                                aria-label={`Go to label ${dotIndex + 1}`}
-                                onClick={() => setCurrentResultIndex(dotIndex)}
-                                className={`h-3 w-3 rounded-full transition-transform duration-300 ${
-                                  dotIndex === safeIndex
-                                    ? "scale-[1.3] bg-[#0A84FF] shadow-[0_0_8px_rgba(10,132,255,0.5)]"
-                                    : "bg-[#C7C7CC]"
-                                }`}
-                              />
-                            ))}
-                          </div>
-                          <button
-                            type="button"
-                            aria-label="Next label"
-                            disabled={safeIndex >= results.length - 1}
-                            onClick={() =>
-                              setCurrentResultIndex((i) =>
-                                Math.min(results.length - 1, i + 1),
-                              )
-                            }
-                            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-[#E5E5EA] bg-white text-[#1C1C1E] shadow-sm transition-all duration-150 hover:scale-[1.02] hover:shadow-md active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            <span className="text-xl">›</span>
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="w-full lg:w-2/3">
-                    <div className="space-y-4">
-                      {activeResult.checks.map((check, index) => {
-                        const baseDelay = index * 80;
-                        const labelMap: Record<string, string> = {
-                          brandName: "Brand name",
-                          classType: "Class / type",
-                          alcoholContent: "Alcohol content",
-                          netContents: "Net contents",
-                          governmentWarning: "Government warning text",
-                          governmentWarningHeader: "GOVERNMENT WARNING header",
-                        };
-
-                        if (check.status === "match") {
-                          return (
-                            <div
-                              key={check.field + index.toString()}
-                              className="animate-fade-scale-in rounded-[20px] bg-[#E5E5EA]/40 px-4 py-3.5 depth-1"
+                            Label {safeIndex + 1} of {results.length}
+                          </p>
+                        )}
+                        <div
+                          className="animate-fade-scale-in flex min-h-[140px] flex-col justify-center rounded-[24px] p-8"
+                          style={{
+                            boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
+                            animationDuration: "0.6s",
+                            animationTimingFunction:
+                              "cubic-bezier(0.34, 1.56, 0.64, 1)",
+                            ...(anyIssue
+                              ? {
+                                  background:
+                                    "linear-gradient(135deg, #E3F2FD 0%, #F5F9FF 100%)",
+                                }
+                              : {
+                                  background:
+                                    "linear-gradient(135deg, #E8F5E9 0%, #F1F8F4 100%)",
+                                }),
+                          }}
+                        >
+                          <div className="flex items-start gap-4">
+                            <span
+                              className="flex h-12 w-12 shrink-0 items-center justify-center text-[48px] leading-none"
                               style={{
-                                animationDelay: `${baseDelay}ms`,
-                                animationDuration: "0.4s",
-                                animationTimingFunction:
-                                  "cubic-bezier(0.34, 1.56, 0.64, 1)",
+                                color: anyIssue ? "#007AFF" : "#30D158",
                               }}
+                              aria-hidden
                             >
-                              <div className="flex items-center gap-3">
-                                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#30D158]/20 text-[#30D158]">
-                                  ✓
-                                </div>
-                                <p className="text-[16px] text-[#1C1C1E]">
-                                  {labelMap[check.field] ?? check.field} matches
-                                  the application record.
-                                </p>
-                              </div>
-                            </div>
-                          );
-                        }
-
-                        if (check.status === "mismatch") {
-                          return (
-                            <div
-                              key={check.field + index.toString()}
-                              className="step3-field-pulse-once animate-fade-scale-in rounded-[20px] bg-[#FFF4E5] px-4 py-4 depth-1"
-                              style={{
-                                animationDelay: `${baseDelay}ms`,
-                                animationDuration: "0.4s",
-                                animationTimingFunction:
-                                  "cubic-bezier(0.34, 1.56, 0.64, 1)",
-                              }}
-                            >
-                              <p className="text-[16px] font-medium text-[#1C1C1E]">
-                                {labelMap[check.field] ?? check.field} needs
-                                review
+                              {anyIssue ? "⚠️" : "✓"}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <h2
+                                className="text-[22px] font-semibold tracking-tight text-[#1C1C1E]"
+                                style={{ letterSpacing: "-0.01em" }}
+                              >
+                                {anyIssue
+                                  ? `${issueCount} field${issueCount !== 1 ? "s" : ""} need your review`
+                                  : "All fields verified"}
+                              </h2>
+                              <p className="mt-1 text-[16px] font-normal text-[#8E8E93]">
+                                {anyIssue
+                                  ? `${matchCount} field${matchCount !== 1 ? "s" : ""} matched automatically`
+                                  : "This label matches the application"}
                               </p>
-                              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                                <div className="space-y-1">
-                                  <span className="inline-flex rounded-full bg-[#E5E5EA] px-3 py-1 text-[14px] font-medium text-[#1C1C1E]">
-                                    Expected
-                                  </span>
-                                  <p className="mt-1 rounded-lg bg-white px-3 py-2 font-mono text-[18px] text-[#1C1C1E]">
-                                    {check.expected ?? "—"}
-                                  </p>
-                                </div>
-                                <div className="space-y-1">
-                                  <span className="inline-flex rounded-full bg-[#FF9F0A]/25 px-3 py-1 text-[14px] font-medium text-[#B65E00]">
-                                    Found
-                                  </span>
-                                  <p className="mt-1 rounded-lg bg-white px-3 py-2 font-mono text-[18px] text-[#1C1C1E]">
-                                    {check.actual ?? "—"}
-                                  </p>
-                                </div>
-                              </div>
-                              {check.notes ? (
-                                <p className="mt-2 text-[14px] text-[#8E8E93]">
-                                  {check.notes}
+                            </div>
+                          </div>
+                          <div className="mt-8 flex flex-col gap-4">
+                            {anyIssue ? (
+                              <button
+                                type="button"
+                                onClick={() => setReviewMode("reviewing")}
+                                className="flex min-h-[56px] w-full items-center justify-center rounded-[24px] px-6 py-4 text-[17px] font-semibold text-white transition-transform duration-150 active:scale-[0.97]"
+                                style={{
+                                  background:
+                                    "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
+                                  boxShadow:
+                                    "0 4px 12px rgba(0, 122, 255, 0.25)",
+                                }}
+                              >
+                                Start Review
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={resetWizard}
+                                className="flex min-h-[56px] w-full items-center justify-center rounded-[24px] px-6 py-4 text-[17px] font-semibold text-white transition-transform duration-150 active:scale-[0.97]"
+                                style={{
+                                  background:
+                                    "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
+                                  boxShadow:
+                                    "0 4px 12px rgba(0, 122, 255, 0.25)",
+                                }}
+                              >
+                                Check Another Label
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        {results.length > 1 && (
+                          <div className="flex items-center justify-center gap-4 pt-4">
+                            <button
+                              type="button"
+                              aria-label="Previous label"
+                              disabled={safeIndex === 0}
+                              onClick={() =>
+                                setCurrentResultIndex((i) => Math.max(0, i - 1))
+                              }
+                              className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-[12px] border border-[#E5E5EA] bg-white text-[#1C1C1E] transition-transform duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              ‹
+                            </button>
+                            <span className="min-w-[80px] text-center text-[15px] text-[#8E8E93]">
+                              {safeIndex + 1} / {results.length}
+                            </span>
+                            <button
+                              type="button"
+                              aria-label="Next label"
+                              disabled={safeIndex >= results.length - 1}
+                              onClick={() =>
+                                setCurrentResultIndex((i) =>
+                                  Math.min(results.length - 1, i + 1),
+                                )
+                              }
+                              className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-[12px] border border-[#E5E5EA] bg-white text-[#1C1C1E] transition-transform duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              ›
+                            </button>
+                          </div>
+                        )}
+                      </section>
+                    );
+                  }
+
+                  /* ——— REVIEW: one field at a time ——— */
+                  if (reviewMode === "reviewing" && currentCheck) {
+                    const fieldLabel =
+                      FIELD_LABEL_MAP[currentCheck.field] ?? currentCheck.field;
+                    return (
+                      <section className="mx-auto flex max-w-[600px] flex-col gap-8">
+                        {results.length > 1 && (
+                          <p className="text-[15px] font-normal text-[#8E8E93]">
+                            Label {safeIndex + 1} of {results.length}
+                          </p>
+                        )}
+                        <p
+                          className="text-[15px] font-normal text-[#8E8E93]"
+                          style={{ letterSpacing: "-0.01em" }}
+                        >
+                          Field {currentReviewIndex + 1} of{" "}
+                          {totalReviewCount} that need review
+                        </p>
+                        <div
+                          className="rounded-[24px] bg-white p-8"
+                          style={{
+                            boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
+                          }}
+                        >
+                          {fileList[safeIndex] ? (
+                            <img
+                              src={URL.createObjectURL(fileList[safeIndex]!)}
+                              alt=""
+                              className="mb-6 w-full rounded-[16px] bg-[#F5F5F7] object-contain"
+                              style={{ maxHeight: "400px" }}
+                            />
+                          ) : (
+                            <div
+                              className="mb-6 w-full rounded-[16px] bg-[#F5F5F7]"
+                              style={{ height: "200px" }}
+                            />
+                          )}
+
+                          {currentCheck.status === "mismatch" ? (
+                            <>
+                              <p
+                                className="text-[22px] font-semibold text-[#1C1C1E]"
+                                style={{ letterSpacing: "-0.01em" }}
+                              >
+                                ⚠️ {fieldLabel}
+                              </p>
+                              <p className="mt-2 text-[12px] font-medium uppercase tracking-wide text-[#8E8E93]">
+                                Expected
+                              </p>
+                              <p className="mt-1 text-[17px] font-normal text-[#1C1C1E]">
+                                {currentCheck.expected ?? "—"}
+                              </p>
+                              <p className="mt-5 text-[12px] font-medium uppercase tracking-wide text-[#8E8E93]">
+                                Found on label
+                              </p>
+                              <p className="mt-1 text-[17px] font-normal text-[#1C1C1E]">
+                                {currentCheck.actual ?? "—"}
+                              </p>
+                              {currentCheck.notes ? (
+                                <p className="mt-5 text-[15px] font-normal italic text-[#8E8E93]">
+                                  {currentCheck.notes}
                                 </p>
                               ) : null}
-                            </div>
-                          );
-                        }
+                              <div className="mt-8 flex flex-col gap-4">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (isLastField) {
+                                      setReviewMode("complete");
+                                    } else {
+                                      setCurrentReviewIndex((i) => i + 1);
+                                    }
+                                  }}
+                                  className="flex min-h-[56px] w-full items-center justify-center rounded-[24px] bg-[#007AFF] px-6 py-4 text-[17px] font-semibold text-white transition-transform duration-150 active:scale-[0.97]"
+                                >
+                                  Accept Match
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (isLastField) {
+                                      setReviewMode("complete");
+                                    } else {
+                                      setCurrentReviewIndex((i) => i + 1);
+                                    }
+                                  }}
+                                  className="min-h-[44px] text-center text-[16px] font-normal text-[#8E8E93] hover:text-[#1C1C1E]"
+                                >
+                                  Flag for Review
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <p
+                                className="text-[22px] font-semibold text-[#1C1C1E]"
+                                style={{ letterSpacing: "-0.01em" }}
+                              >
+                                ✗ {fieldLabel}
+                              </p>
+                              <p className="mt-4 text-[17px] font-normal text-[#1C1C1E]">
+                                Couldn't read {fieldLabel} clearly from the
+                                photo.
+                              </p>
+                              <p className="mt-2 text-[15px] font-normal text-[#8E8E93]">
+                                Small or angled text is harder for OCR to
+                                detect. Enter it manually:
+                              </p>
+                              <input
+                                type="text"
+                                placeholder="Type what the label says"
+                                value={
+                                  manualOverrides[currentCheck.field] ?? ""
+                                }
+                                onChange={(e) =>
+                                  setManualOverrides((prev) => ({
+                                    ...prev,
+                                    [currentCheck.field]: e.target.value,
+                                  }))
+                                }
+                                className="mt-4 w-full rounded-[16px] border-2 border-[#E5E5EA] bg-white px-4 py-3 text-[17px] text-[#1C1C1E] placeholder:text-[#C7C7CC] focus:border-[#007AFF] focus:outline-none focus:ring-0"
+                                style={{ minHeight: "52px" }}
+                              />
+                              {currentCheck.expected ? (
+                                <p className="mt-4 text-[15px] text-[#8E8E93]">
+                                  Expected: {currentCheck.expected}
+                                </p>
+                              ) : null}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (isLastField) {
+                                    setReviewMode("complete");
+                                  } else {
+                                    setCurrentReviewIndex((i) => i + 1);
+                                  }
+                                }}
+                                className="mt-8 flex min-h-[56px] w-full items-center justify-center rounded-[24px] bg-[#007AFF] px-6 py-4 text-[17px] font-semibold text-white transition-transform duration-150 active:scale-[0.97]"
+                              >
+                                Continue
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </section>
+                    );
+                  }
 
-                        return (
-                          <div
-                            key={check.field + index.toString()}
-                            className="step3-field-pulse-once animate-fade-scale-in rounded-[20px] bg-red-50 px-4 py-4 depth-1"
-                            style={{
-                              animationDelay: `${baseDelay}ms`,
-                              animationDuration: "0.4s",
-                              animationTimingFunction:
-                                "cubic-bezier(0.34, 1.56, 0.64, 1)",
-                            }}
-                          >
-                            <p className="text-[16px] font-medium text-[#FF3B30]">
-                              {labelMap[check.field] ?? check.field} not found
-                              on the label.
-                            </p>
-                            {check.expected ? (
-                              <p className="mt-2 text-[14px] text-[#1C1C1E]">
-                                Expected:{" "}
-                                <span className="font-mono text-[18px]">
-                                  {check.expected}
-                                </span>
-                              </p>
-                            ) : null}
-                            {check.notes ? (
-                              <p className="mt-1 text-[14px] text-[#8E8E93]">
-                                {check.notes}
-                              </p>
-                            ) : null}
+                  /* ——— COMPLETE ——— */
+                  if (reviewMode === "complete") {
+                    const durationSec =
+                      activeResult.status === "success"
+                        ? (activeResult.durationMs / 1000).toFixed(1)
+                        : "—";
+                    return (
+                      <section className="mx-auto flex max-w-[600px] flex-col gap-8">
+                        {results.length > 1 && (
+                          <p className="text-[15px] font-normal text-[#8E8E93]">
+                            Label {safeIndex + 1} of {results.length}
+                          </p>
+                        )}
+                        <div
+                          className="rounded-[24px] bg-white p-8"
+                          style={{
+                            boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
+                          }}
+                        >
+                          <div className="flex items-center gap-4">
+                            <span
+                              className="flex h-12 w-12 shrink-0 items-center justify-center text-[48px] leading-none text-[#30D158]"
+                              aria-hidden
+                            >
+                              ✓
+                            </span>
+                            <h2 className="text-[22px] font-semibold tracking-tight text-[#1C1C1E]">
+                              Review complete
+                            </h2>
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </section>
+                          <p className="mt-4 text-[17px] font-normal text-[#1C1C1E]">
+                            {totalReviewCount} field
+                            {totalReviewCount !== 1 ? "s" : ""} reviewed
+                          </p>
+                          <p className="mt-1 text-[15px] font-normal text-[#8E8E93]">
+                            {matchCount} field
+                            {matchCount !== 1 ? "s" : ""} matched automatically
+                          </p>
+                          <p className="mt-5 text-[15px] font-normal text-[#8E8E93]">
+                            Processed in {durationSec} seconds
+                          </p>
+                          <div className="mt-8 flex flex-col gap-4">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const data = {
+                                  fileName: activeResult.fileName,
+                                  matchCount,
+                                  reviewedCount: totalReviewCount,
+                                  durationMs:
+                                    activeResult.status === "success"
+                                      ? activeResult.durationMs
+                                      : 0,
+                                  manualOverrides,
+                                };
+                                const blob = new Blob(
+                                  [JSON.stringify(data, null, 2)],
+                                  { type: "application/json" },
+                                );
+                                const a = document.createElement("a");
+                                a.href = URL.createObjectURL(blob);
+                                a.download = `label-result-${activeResult.fileName.replace(/\.[^.]+$/, "")}.json`;
+                                a.click();
+                                URL.revokeObjectURL(a.href);
+                              }}
+                              className="flex min-h-[56px] w-full items-center justify-center rounded-[24px] border-2 border-[#E5E5EA] bg-white px-6 py-4 text-[17px] font-semibold text-[#1C1C1E] transition-transform duration-150 active:scale-[0.97] hover:bg-[#F2F2F7]"
+                            >
+                              Export Results
+                            </button>
+                            {results.length > 1 &&
+                              safeIndex < results.length - 1 ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCurrentResultIndex(safeIndex + 1);
+                                }}
+                                className="flex min-h-[56px] w-full items-center justify-center rounded-[24px] px-6 py-4 text-[17px] font-semibold text-white transition-transform duration-150 active:scale-[0.97]"
+                                style={{
+                                  background:
+                                    "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
+                                  boxShadow:
+                                    "0 4px 12px rgba(0, 122, 255, 0.25)",
+                                }}
+                              >
+                                Next Label
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={resetWizard}
+                              className="min-h-[44px] text-center text-[16px] font-normal text-[#8E8E93] hover:text-[#1C1C1E]"
+                            >
+                              Check Another
+                            </button>
+                          </div>
+                        </div>
+                      </section>
+                    );
+                  }
+
+                  return null;
+                })()}
               </>
             )}
 
-            <div className="flex justify-center pt-2">
+            <div className="flex justify-center pt-6">
               <button
                 type="button"
                 onClick={resetWizard}
-                className="inline-flex min-h-[56px] w-full max-w-md items-center justify-center rounded-[16px] bg-[#007AFF] px-6 py-4 text-[16px] font-semibold text-white depth-2 transition-all duration-300 hover:scale-[1.02] hover:opacity-95 active:scale-[0.98]"
+                className="inline-flex min-h-[56px] w-full max-w-[320px] items-center justify-center rounded-[12px] px-6 py-4 text-[17px] font-semibold text-white transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                style={{
+                  background:
+                    "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
+                  boxShadow: "0 4px 12px rgba(0, 122, 255, 0.25)",
+                }}
               >
                 Check another label
               </button>
@@ -2040,153 +2251,6 @@ export default function Home() {
             )}
           </section>
 
-          <section className="flex flex-col gap-4">
-            <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-              <h2 className="text-sm font-semibold text-slate-900">
-                Results
-              </h2>
-              <p className="mt-1 text-xs text-slate-500">
-                Each row represents a field an agent would normally eyeball:
-                brand name, ABV, warning text, and so on.
-              </p>
-              {!results.length ? (
-                <div className="mt-4 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-6 text-center text-xs text-slate-500">
-                  Run a check to see automated comparisons here. Agents remain
-                  the final decision-makers.
-                </div>
-              ) : (
-                <div className="mt-3 space-y-4">
-                  {results
-                    .filter((r): r is Extract<typeof results[number], { status: "success" }> => r.status === "success")
-                    .map((result) => (
-                    <div
-                      key={result.fileName}
-                      className="rounded-lg border border-slate-200 bg-slate-50 p-3"
-                    >
-                      <div className="flex items-center justify-between gap-2 text-xs">
-                        <div className="flex flex-col">
-                          <span className="font-medium text-slate-900">
-                            {result.fileName}
-                          </span>
-                          <span className="text-[10px] text-slate-500">
-                            OCR + checks in{" "}
-                            {result.durationMs.toFixed(0)} ms (local browser)
-                          </span>
-                        </div>
-                      </div>
-                      <div className="mt-3 overflow-x-auto">
-                        <table className="min-w-full border-separate border-spacing-y-1 text-[11px]">
-                          <thead>
-                            <tr className="text-left text-slate-500">
-                              <th className="px-2 py-1 font-medium">Field</th>
-                              <th className="px-2 py-1 font-medium">Status</th>
-                              <th className="px-2 py-1 font-medium">
-                                Expected
-                              </th>
-                              <th className="px-2 py-1 font-medium">On label</th>
-                              <th className="px-2 py-1 font-medium">Notes</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {result.checks.map((check, index) => {
-                              const statusColors: Record<
-                                typeof check.status,
-                                string
-                              > = {
-                                match:
-                                  "bg-emerald-50 text-emerald-700 ring-emerald-100",
-                                mismatch:
-                                  "bg-amber-50 text-amber-700 ring-amber-100",
-                                missing:
-                                  "bg-red-50 text-red-700 ring-red-100",
-                              };
-
-                              const labelMap: Record<string, string> = {
-                                brandName: "Brand name",
-                                classType: "Class / type",
-                                alcoholContent: "Alcohol content",
-                                netContents: "Net contents",
-                                governmentWarning: "Government warning text",
-                                governmentWarningHeader:
-                                  "GOVERNMENT WARNING header",
-                              };
-
-                              return (
-                                <tr
-                                  key={check.field + index.toString()}
-                                  className="rounded-md bg-white align-top shadow-sm"
-                                >
-                                  <td className="px-2 py-1.5 text-slate-800">
-                                    {labelMap[check.field] ?? check.field}
-                                  </td>
-                                  <td className="px-2 py-1.5">
-                                    <span
-                                      className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ${statusColors[check.status]}`}
-                                    >
-                                      {check.status === "match" && "Match"}
-                                      {check.status === "mismatch" &&
-                                        "Needs review"}
-                                      {check.status === "missing" &&
-                                        "Not found"}
-                                    </span>
-                                  </td>
-                                  <td className="max-w-xs px-2 py-1.5 text-[10px] text-slate-600">
-                                    {check.expected ?? "—"}
-                                  </td>
-                                  <td className="max-w-xs px-2 py-1.5 text-[10px] text-slate-600">
-                                    {check.actual ?? "—"}
-                                  </td>
-                                  <td className="max-w-xs px-2 py-1.5 text-[10px] text-slate-500">
-                                    {check.notes ?? "—"}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                      <details className="mt-3 text-[10px] text-slate-500">
-                        <summary className="cursor-pointer select-none text-[10px] font-medium text-slate-600">
-                          Show raw OCR text (for troubleshooting)
-                        </summary>
-                        <pre className="mt-2 max-h-40 overflow-y-auto rounded bg-[#F5F7FA] p-2 text-[10px] text-slate-700 ring-1 ring-slate-200">
-                          {result.rawOcrText || "No text detected."}
-                        </pre>
-                      </details>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="rounded-xl bg-white p-4 text-xs text-slate-700 ring-1 ring-slate-200 shadow-sm">
-              <h2 className="text-sm font-semibold text-slate-900">
-                How this prototype fits your workflow
-              </h2>
-              <ul className="mt-2 space-y-1 list-disc pl-5">
-                <li>
-                  Designed for{" "}
-                  <span className="font-medium">5–10 minute reviews</span> by
-                  surfacing obvious matches and mismatches in seconds.
-                </li>
-                <li>
-                  Handles{" "}
-                  <span className="font-medium">
-                    brand, class/type, ABV, net contents, and warning text
-                  </span>{" "}
-                  with tolerant matching for small formatting differences.
-                </li>
-                <li>
-                  Runs OCR in the browser, avoiding outbound network calls—more
-                  compatible with constrained government networks.
-                </li>
-                <li>
-                  Batch mode lets you pair multiple images with application
-                  records for large importer drops.
-                </li>
-              </ul>
-            </div>
-          </section>
         </main>
       </div>
     </div>

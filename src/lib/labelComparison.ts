@@ -25,6 +25,59 @@ export type FieldCheck = {
   notes?: string;
 };
 
+export function normalizeForComparison(text: string | undefined): string {
+  if (!text) return "";
+
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function similarityScore(str1: string, str2: string): number {
+  const norm1 = normalizeForComparison(str1);
+  const norm2 = normalizeForComparison(str2);
+
+  if (norm1 === norm2) return 100;
+
+  const matrix: number[][] = [];
+  const len1 = norm1.length;
+  const len2 = norm2.length;
+
+  for (let i = 0; i <= len1; i++) {
+    matrix[i] = [i];
+  }
+
+  for (let j = 0; j <= len2; j++) {
+    matrix[0][j] = j;
+  }
+
+  for (let i = 1; i <= len1; i++) {
+    for (let j = 1; j <= len2; j++) {
+      const cost = norm1[i - 1] === norm2[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost,
+      );
+    }
+  }
+
+  const distance = matrix[len1][len2];
+  const maxLen = Math.max(len1, len2);
+  const similarity = ((maxLen - distance) / maxLen) * 100;
+
+  return Math.round(similarity);
+}
+
+function normalizeNumeric(text: string | undefined): string {
+  if (!text) return "";
+
+  // Keep only digits so "750 mL" → "750", "45% Alc./Vol. (90 Proof)" → "4590"
+  return text.toLowerCase().replace(/[^\d]/g, "").trim();
+}
+
 const normalizeForLooseMatch = (value: string) =>
   value
     .toUpperCase()
@@ -37,55 +90,132 @@ const normalizeWhitespace = (value: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
+function pushFuzzyCheck(
+  checks: FieldCheck[],
+  field: keyof ApplicationLabelData,
+  expected: string,
+  actual: string,
+  matchThreshold: number,
+): void {
+  const similarity = similarityScore(expected, actual);
+
+  if (similarity === 100) {
+    checks.push({
+      field,
+      status: "match",
+      expected,
+      actual,
+    });
+  } else if (similarity >= matchThreshold) {
+    checks.push({
+      field,
+      status: "match",
+      expected,
+      actual,
+      notes: `${similarity}% match - minor formatting difference. Use your judgment.`,
+    });
+  } else if (similarity >= 70) {
+    checks.push({
+      field,
+      status: "mismatch",
+      expected,
+      actual,
+      notes: `${similarity}% match - please verify this is the same.`,
+    });
+  } else {
+    checks.push({
+      field,
+      status: "mismatch",
+      expected,
+      actual,
+      notes: `${similarity}% match - these appear to be different.`,
+    });
+  }
+}
+
 export const compareLabelData = (
   application: ApplicationLabelData,
   extracted: ExtractedLabelData,
 ): FieldCheck[] => {
   const checks: FieldCheck[] = [];
 
-  const compareField = (
-    field: keyof ApplicationLabelData,
-    opts?: { loose?: boolean },
-  ) => {
-    const expectedRaw = application[field];
-    const actualRaw =
-      field === "governmentWarning"
-        ? extracted.governmentWarningText
-        : extracted[field as keyof ExtractedLabelData];
+  // Brand and class: fuzzy only
+  const textOnlyFields: {
+    field: keyof ApplicationLabelData;
+    key: keyof ExtractedLabelData;
+    threshold: number;
+  }[] = [
+    { field: "brandName", key: "brandName", threshold: 85 },
+    { field: "classType", key: "classType", threshold: 85 },
+  ];
 
-    if (!actualRaw) {
+  for (const { field, key, threshold } of textOnlyFields) {
+    const expectedRaw = application[field];
+    const actualRaw = extracted[key as keyof ExtractedLabelData];
+    const expected =
+      typeof expectedRaw === "string" ? normalizeWhitespace(expectedRaw) : "";
+    const actual =
+      typeof actualRaw === "string"
+        ? normalizeWhitespace(actualRaw)
+        : "";
+
+    if (!actualRaw || actual === "") {
       checks.push({
         field,
         status: "missing",
         expected: expectedRaw,
         notes: "Not clearly found on label",
       });
-      return;
+      continue;
     }
 
-    const expected = normalizeWhitespace(expectedRaw);
+    pushFuzzyCheck(checks, field, expected, actual, threshold);
+  }
+
+  // Numeric fields: try numeric normalization first, then fuzzy fallback
+  const numericFields: {
+    field: "alcoholContent" | "netContents";
+    key: "alcoholContent" | "netContents";
+    threshold: number;
+  }[] = [
+    { field: "alcoholContent", key: "alcoholContent", threshold: 90 },
+    { field: "netContents", key: "netContents", threshold: 90 },
+  ];
+
+  for (const { field, key, threshold } of numericFields) {
+    const expectedRaw = application[field];
+    const actualRaw = extracted[key];
+    const expected =
+      typeof expectedRaw === "string" ? normalizeWhitespace(expectedRaw) : "";
     const actual =
       typeof actualRaw === "string"
         ? normalizeWhitespace(actualRaw)
-        : normalizeWhitespace("");
+        : "";
 
-    const isMatch = opts?.loose
-      ? normalizeForLooseMatch(expected) === normalizeForLooseMatch(actual)
-      : expected === actual;
+    if (!actualRaw || actual === "") {
+      checks.push({
+        field,
+        status: "missing",
+        expected: expectedRaw,
+        notes: "Not clearly found on label",
+      });
+      continue;
+    }
 
-    checks.push({
-      field,
-      status: isMatch ? "match" : "mismatch",
-      expected,
-      actual,
-      notes: !isMatch ? "Review with human judgment" : undefined,
-    });
-  };
+    const normExpected = normalizeNumeric(expectedRaw);
+    const normActual = normalizeNumeric(actualRaw);
 
-  compareField("brandName", { loose: true });
-  compareField("classType", { loose: true });
-  compareField("alcoholContent");
-  compareField("netContents");
+    if (normExpected !== "" && normActual !== "" && normExpected === normActual) {
+      checks.push({
+        field,
+        status: "match",
+        expected: expectedRaw,
+        actual: actualRaw,
+      });
+    } else {
+      pushFuzzyCheck(checks, field, expected, actual, threshold);
+    }
+  }
 
   const expectedWarning = normalizeWhitespace(application.governmentWarning);
   const actualWarning = extracted.governmentWarningText
