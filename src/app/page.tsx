@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createWorker } from "tesseract.js";
 import {
   STANDARD_GOVERNMENT_WARNING,
@@ -11,12 +11,19 @@ import {
   type FieldCheck,
 } from "@/lib/labelComparison";
 
-type VerificationResult = {
-  fileName: string;
-  checks: FieldCheck[];
-  rawOcrText: string;
-  durationMs: number;
-};
+type VerificationResult =
+  | {
+      status: "success";
+      fileName: string;
+      checks: FieldCheck[];
+      rawOcrText: string;
+      durationMs: number;
+    }
+  | {
+      status: "ocr_failed";
+      fileName: string;
+      fileIndex: number; // index in results array; file is fileList[fileIndex] when in sync
+    };
 
 type Mode = "single" | "batch";
 
@@ -93,10 +100,10 @@ function ThumbnailCard({
 
   return (
     <figure
-      className="step1-thumb-in group relative flex flex-col gap-2 rounded-[16px] border border-gray-200 bg-white p-2 transition-all duration-300 ease-out hover:scale-[1.04] hover:border-gray-300 hover:shadow-lg"
+      className="step1-thumb-in group relative flex flex-col gap-2 rounded-[20px] border border-[#E5E5EA] bg-white p-2 transition-all duration-500 hover:scale-[1.04] hover:border-[#D1D5DB] hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)]"
       style={{
         ...style,
-        boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+        boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
       }}
     >
       <button
@@ -129,10 +136,10 @@ function ThumbnailCard({
           <div className="h-[140px] w-full rounded-[12px] bg-[#FAFBFC]" />
         )}
       </div>
-      <figcaption className="truncate text-sm font-medium text-[#1C1C1E]">
+      <figcaption className="truncate text-[16px] font-medium text-[#1C1C1E]">
         {file.name}
       </figcaption>
-      <p className="text-xs text-[#8E8E93]">
+      <p className="text-[14px] text-[#8E8E93]">
         {sizeStr}
         {dimsStr ? ` • ${dimsStr}` : ""}
       </p>
@@ -149,20 +156,43 @@ export default function Home() {
   const [batchJson, setBatchJson] = useState("");
   const [fileList, setFileList] = useState<File[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingCurrent, setProcessingCurrent] = useState(0);
+  const [processingTotal, setProcessingTotal] = useState(0);
   const [results, setResults] = useState<VerificationResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [progressMessage, setProgressMessage] = useState<string | null>(null);
   const [currentResultIndex, setCurrentResultIndex] = useState(0);
   const [step2ShowAllFields, setStep2ShowAllFields] = useState(false);
   const [step2EditingWarning, setStep2EditingWarning] = useState(false);
+  const [uploadFileTypeError, setUploadFileTypeError] = useState<string | null>(
+    null,
+  );
+  const [catastrophicError, setCatastrophicError] = useState<string | null>(
+    null,
+  );
+  const [browserBannerDismissed, setBrowserBannerDismissed] = useState(false);
+  const replaceFileInputRef = useRef<HTMLInputElement>(null);
+  const [replacingResultIndex, setReplacingResultIndex] = useState<
+    number | null
+  >(null);
+  const [pendingReplaceResultIndex, setPendingReplaceResultIndex] = useState<
+    number | null
+  >(null);
 
   const handleFilesSelected = (files: FileList | null) => {
     if (!files) return;
     setError(null);
-    const newFiles = Array.from(files).filter((file) =>
-      file.type.startsWith("image/"),
+    const allFiles = Array.from(files);
+    const images = allFiles.filter((file) => file.type.startsWith("image/"));
+    const hasUnsupported = allFiles.some(
+      (file) => !file.type.startsWith("image/"),
     );
-    if (!newFiles.length) {
+    if (hasUnsupported) {
+      setUploadFileTypeError(
+        "PDF files aren't supported. Please upload JPG or PNG images.",
+      );
+    }
+    if (!images.length) {
       setError("Please select one or more image files.");
       return;
     }
@@ -172,12 +202,12 @@ export default function Home() {
         const existingKeys = new Set(
           current.map((file) => `${file.name}-${file.lastModified}`),
         );
-        const deduped = newFiles.filter(
+        const deduped = images.filter(
           (file) => !existingKeys.has(`${file.name}-${file.lastModified}`),
         );
         return deduped.length ? [...current, ...deduped] : current;
       }
-      return newFiles;
+      return images;
     });
     setResults([]);
   };
@@ -192,6 +222,12 @@ export default function Home() {
       current.filter((file) => `${file.name}-${file.lastModified}` !== key),
     );
   };
+
+  useEffect(() => {
+    if (!uploadFileTypeError) return;
+    const t = setTimeout(() => setUploadFileTypeError(null), 5000);
+    return () => clearTimeout(t);
+  }, [uploadFileTypeError]);
 
   const parsedBatchData: ApplicationLabelData[] | null = useMemo(() => {
     if (!batchJson.trim()) return null;
@@ -219,14 +255,30 @@ export default function Home() {
       setIsProcessing(true);
       setResults([]);
       setError(null);
+      setCatastrophicError(null);
       setProgressMessage("Initializing OCR engine...");
+      setProcessingTotal(files.length);
+      setProcessingCurrent(0);
 
-      const worker = await createWorker("eng");
+      let worker;
+      try {
+        worker = await createWorker("eng");
+      } catch (e) {
+        setCatastrophicError(
+          "OCR couldn't start. Your images are safe—try again or use a supported browser.",
+        );
+        setIsProcessing(false);
+        setProcessingCurrent(0);
+        setProcessingTotal(0);
+        setProgressMessage(null);
+        return;
+      }
 
       try {
         const newResults: VerificationResult[] = [];
 
         for (let index = 0; index < files.length; index += 1) {
+          setProcessingCurrent(index + 1);
           const file = files[index];
           const appData =
             applications[index] ?? applications[applications.length - 1];
@@ -234,34 +286,40 @@ export default function Home() {
           const start = performance.now();
           setProgressMessage(`Reading label ${index + 1} of ${files.length}...`);
 
-          const { data } = await worker.recognize(file);
-          const ocrText = data.text ?? "";
-
-          const extracted = extractFromOcrText(ocrText);
-          const checks = compareLabelData(appData, extracted);
-
-          const durationMs = performance.now() - start;
-
-          newResults.push({
-            fileName: file.name,
-            checks,
-            rawOcrText: ocrText,
-            durationMs,
-          });
+          try {
+            const { data } = await worker.recognize(file);
+            const ocrText = data.text ?? "";
+            const extracted = extractFromOcrText(ocrText);
+            const checks = compareLabelData(appData, extracted);
+            const durationMs = performance.now() - start;
+            newResults.push({
+              status: "success",
+              fileName: file.name,
+              checks,
+              rawOcrText: ocrText,
+              durationMs,
+            });
+          } catch {
+            newResults.push({
+              status: "ocr_failed",
+              fileName: file.name,
+              fileIndex: index,
+            });
+          }
         }
 
         setResults(newResults);
         setProgressMessage(null);
       } catch (e) {
-        setError(
-          e instanceof Error
-            ? e.message
-            : "Unexpected error while processing labels.",
+        setCatastrophicError(
+          "OCR processing stopped unexpectedly. Your images are safe—try again or contact support.",
         );
       } finally {
         await worker.terminate();
         setIsProcessing(false);
         setProgressMessage(null);
+        setProcessingCurrent(0);
+        setProcessingTotal(0);
       }
     },
     [],
@@ -284,6 +342,68 @@ export default function Home() {
     setStep(3);
   };
 
+  const runSingleImageVerification = useCallback(
+    async (resultIndex: number, fileOverride?: File) => {
+      const file = fileOverride ?? fileList[resultIndex];
+      if (!file) return;
+      setReplacingResultIndex(resultIndex);
+      const worker = await createWorker("eng");
+      try {
+        const start = performance.now();
+        const { data } = await worker.recognize(file);
+        const ocrText = data.text ?? "";
+        const extracted = extractFromOcrText(ocrText);
+        const checks = compareLabelData(applicationData, extracted);
+        const durationMs = performance.now() - start;
+        setResults((prev) => {
+          const next = [...prev];
+          next[resultIndex] = {
+            status: "success",
+            fileName: file.name,
+            checks,
+            rawOcrText: ocrText,
+            durationMs,
+          };
+          return next;
+        });
+      } catch {
+        setResults((prev) => {
+          const next = [...prev];
+          const existing = next[resultIndex];
+          if (existing?.status === "ocr_failed")
+            next[resultIndex] = { ...existing };
+          return next;
+        });
+      } finally {
+        await worker.terminate();
+        setReplacingResultIndex(null);
+      }
+    },
+    [fileList, applicationData],
+  );
+
+  const skipLabelAtResultIndex = useCallback((resultIndex: number) => {
+    setResults((prev) => prev.filter((_, i) => i !== resultIndex));
+    setFileList((prev) => prev.filter((_, i) => i !== resultIndex));
+    setCurrentResultIndex((i) =>
+      i >= resultIndex ? Math.max(0, i - 1) : i,
+    );
+  }, []);
+
+  const replaceFileAtResultIndex = useCallback(
+    (resultIndex: number, newFile: File) => {
+      setFileList((prev) => {
+        const next = [...prev];
+        next[resultIndex] = newFile;
+        return next;
+      });
+      void runSingleImageVerification(resultIndex, newFile);
+    },
+    [runSingleImageVerification],
+  );
+
+  const scrollToFirstFailedRef = useRef<HTMLDivElement>(null);
+
   const resetWizard = () => {
     setMode("single");
     setStep(1);
@@ -292,10 +412,16 @@ export default function Home() {
     setFileList([]);
     setResults([]);
     setError(null);
+    setCatastrophicError(null);
+    setUploadFileTypeError(null);
     setProgressMessage(null);
+    setProcessingCurrent(0);
+    setProcessingTotal(0);
     setCurrentResultIndex(0);
     setStep2ShowAllFields(false);
     setStep2EditingWarning(false);
+    setReplacingResultIndex(null);
+    setPendingReplaceResultIndex(null);
   };
 
   const renderProgress = () => {
@@ -335,13 +461,48 @@ export default function Home() {
 
   if (step === 1) {
     return (
-      <div className="min-h-screen bg-[#F2F2F7] text-[#1C1C1E]">
-        <div className="mx-auto flex max-w-xl flex-col gap-8 px-4 py-10 sm:py-12">
+      <>
+        {catastrophicError ? (
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+            style={{
+              backdropFilter: "blur(12px)",
+              backgroundColor: "rgba(0,0,0,0.2)",
+            }}
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="catastrophic-error-heading"
+          >
+            <div
+              className="w-full max-w-md animate-fade-scale-in rounded-[20px] bg-white p-6 depth-3"
+              style={{ animationDuration: "0.3s" }}
+            >
+              <div className="flex flex-col items-center gap-4 text-center">
+                <span className="flex h-10 w-10 items-center justify-center text-[40px] text-[#8E8E93]" aria-hidden>⚠</span>
+                <h2 id="catastrophic-error-heading" className="text-[22px] font-semibold text-[#1C1C1E]">Something went wrong</h2>
+                <p className="text-[16px] leading-relaxed text-[#8E8E93]">{catastrophicError}</p>
+                <div className="flex w-full flex-col gap-3 pt-2">
+                  <button type="button" onClick={() => setCatastrophicError(null)} className="flex min-h-[56px] w-full items-center justify-center rounded-[16px] bg-[#007AFF] px-4 py-3 text-[16px] font-semibold text-white depth-2">Try again</button>
+                  <a href="mailto:support@example.com?subject=TTB%20Label%20App%20Support" className="min-h-[44px] text-[16px] font-normal text-[#8E8E93] hover:text-[#1C1C1E]">Contact support</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {!browserBannerDismissed ? (
+          <div className="fixed left-0 right-0 top-0 z-[99] flex items-center gap-3 bg-[#FFF9E5] px-4 py-3 text-[14px] text-[#1C1C1E]" style={{ borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
+            <span className="shrink-0 text-[#007AFF]" aria-hidden>ℹ</span>
+            <p className="min-w-0 flex-1">For best results, use Safari, Chrome, or Edge. Some features may not work in this browser.</p>
+            <button type="button" onClick={() => setBrowserBannerDismissed(true)} aria-label="Dismiss browser notice" className="shrink-0 rounded p-1 text-[#8E8E93] hover:bg-black/5 hover:text-[#1C1C1E]">×</button>
+          </div>
+        ) : null}
+      <div className="min-h-screen depth-0 text-[#1C1C1E]">
+        <div className="mx-auto flex max-w-xl flex-col gap-10 px-4 py-10 sm:py-12">
           <header className="space-y-2">
             {renderProgress()}
             <div className="step1-header-in flex items-center gap-4">
               <div
-                className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-2xl text-4xl"
+                className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl text-4xl"
                 style={{
                   background: "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
                   color: "white",
@@ -353,7 +514,7 @@ export default function Home() {
                 <h1 className="text-2xl font-semibold tracking-tight text-[#1C1C1E]">
                   Upload label image
                 </h1>
-                <p className="mt-1 text-base text-[#8E8E93]">
+                <p className="mt-1 text-[16px] text-[#8E8E93]">
                   Select one or more label images
                 </p>
               </div>
@@ -361,17 +522,36 @@ export default function Home() {
           </header>
 
           {error ? (
-            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-sm">
+            <div className="rounded-[20px] border border-[#FF3B30]/30 bg-red-50 px-4 py-3 text-[16px] text-[#FF3B30] depth-1">
               {error}
             </div>
           ) : null}
 
-          <main className="space-y-6">
+          {uploadFileTypeError ? (
+            <div
+              className="animate-error-shake flex items-center gap-3 rounded-[20px] border border-[#FF3B30]/20 bg-[#FFE5E5] px-4 py-3 depth-1"
+              role="alert"
+              aria-live="polite"
+            >
+              <span
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#FF3B30] text-sm font-bold text-white"
+                aria-hidden
+              >
+                ×
+              </span>
+              <p className="text-[15px] font-semibold text-[#1C1C1E]">
+                {uploadFileTypeError}
+              </p>
+            </div>
+          ) : null}
+
+          <main className="flex flex-col gap-10">
             <section
-              className={`overflow-hidden rounded-[16px] bg-white p-8 shadow-[0_4px_12px_rgba(0,0,0,0.08)] ${fileList.length ? "upload-zone-pulse" : ""}`}
+              className={`overflow-hidden rounded-[20px] bg-white p-8 ${fileList.length ? "upload-zone-pulse" : ""}`}
+              style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}
             >
               <label
-                className={`step1-upload-zone-in flex min-h-[400px] cursor-pointer flex-col items-center justify-center rounded-[16px] px-4 py-10 text-center transition-all duration-200 ease-out hover:scale-[1.02] ${
+                className={`step1-upload-zone-in flex min-h-[400px] cursor-pointer flex-col items-center justify-center rounded-[20px] px-4 py-10 text-center transition-all duration-500 hover:scale-[1.02] ${
                   fileList.length
                     ? "border-2 border-[#30D158] border-solid bg-[#F0FDF4] hover:border-[#30D158]"
                     : "border-[3px] border-dashed border-[#D1D5DB] bg-gradient-to-b from-white to-[#FAFBFC] hover:border-[#9CA3AF]"
@@ -406,7 +586,7 @@ export default function Home() {
                     : "Select label images"}
                 </span>
                 <span
-                  className="mt-2 text-base text-[#8E8E93]"
+                  className="mt-2 text-[14px] text-[#8E8E93]"
                   style={{ opacity: 0.6 }}
                 >
                   {fileList.length
@@ -417,7 +597,7 @@ export default function Home() {
 
               {fileList.length ? (
                 <div className="mt-6 space-y-4">
-                  <p className="text-base font-semibold text-[#1C1C1E]">
+                  <p className="text-[16px] font-semibold text-[#1C1C1E]">
                     {fileList.length === 1
                       ? "1 label selected"
                       : `${fileList.length} labels selected`}
@@ -439,10 +619,10 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={clearAllFiles}
-                    className="flex items-center gap-2 rounded-[12px] border border-[#FF3B30]/30 bg-white px-4 py-2.5 text-sm font-semibold text-[#FF3B30] shadow-sm transition-transform duration-150 hover:scale-[0.97] hover:bg-red-50"
+                    className="min-h-[44px] rounded-[16px] border border-[#FF3B30]/30 bg-white px-4 py-2.5 text-[16px] font-semibold text-[#FF3B30] transition-all duration-500 hover:scale-[0.98] hover:bg-red-50 active:scale-[0.97]"
+                    style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}
                   >
-                    <span aria-hidden>🗑</span>
-                    Clear all
+                    <span aria-hidden>🗑</span> Clear all
                   </button>
                 </div>
               ) : null}
@@ -453,11 +633,11 @@ export default function Home() {
                 type="button"
                 disabled={!fileList.length}
                 onClick={() => setStep(2)}
-                className="w-full min-h-[56px] rounded-[12px] px-6 py-4 text-[18px] font-semibold text-white shadow-lg transition-all duration-300 ease-out hover:scale-[1.03] hover:shadow-xl disabled:scale-100 sm:w-auto disabled:opacity-50 disabled:grayscale active:scale-[0.97] disabled:hover:shadow-lg"
+                className="w-full min-h-[56px] rounded-[16px] px-6 py-4 text-[16px] font-semibold text-white transition-all duration-500 hover:scale-[1.02] active:scale-[0.97] disabled:opacity-50 disabled:grayscale disabled:hover:scale-100 sm:w-auto"
                 style={{
                   background:
                     "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
-                  boxShadow: "0 4px 16px rgba(0, 122, 255, 0.3)",
+                  boxShadow: "0 4px 16px rgba(0, 0, 0, 0.08)",
                 }}
               >
                 Next: Add application data
@@ -466,6 +646,7 @@ export default function Home() {
           </main>
         </div>
       </div>
+    </>
     );
   }
 
@@ -476,8 +657,80 @@ export default function Home() {
       applicationData.governmentWarning === STANDARD_GOVERNMENT_WARNING;
 
     return (
-      <div className="min-h-screen bg-[#F2F2F7] text-[#1C1C1E]">
-        <div className="mx-auto flex max-w-xl flex-col gap-8 px-4 py-10 sm:py-12">
+      <div className="min-h-screen depth-0 text-[#1C1C1E]">
+        {catastrophicError ? (
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+            style={{
+              backdropFilter: "blur(12px)",
+              backgroundColor: "rgba(0,0,0,0.2)",
+            }}
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="catastrophic-error-heading"
+          >
+            <div
+              className="w-full max-w-md animate-fade-scale-in rounded-[20px] bg-white p-6 depth-3"
+              style={{ animationDuration: "0.3s" }}
+            >
+              <div className="flex flex-col items-center gap-4 text-center">
+                <span
+                  className="flex h-10 w-10 items-center justify-center text-[40px] text-[#8E8E93]"
+                  aria-hidden
+                >
+                  ⚠
+                </span>
+                <h2
+                  id="catastrophic-error-heading"
+                  className="text-[22px] font-semibold text-[#1C1C1E]"
+                >
+                  Something went wrong
+                </h2>
+                <p className="text-[16px] leading-relaxed text-[#8E8E93]">
+                  {catastrophicError}
+                </p>
+                <div className="flex w-full flex-col gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setCatastrophicError(null)}
+                    className="flex min-h-[56px] w-full items-center justify-center rounded-[16px] bg-[#007AFF] px-4 py-3 text-[16px] font-semibold text-white depth-2"
+                  >
+                    Try again
+                  </button>
+                  <a
+                    href="mailto:support@example.com?subject=TTB%20Label%20App%20Support"
+                    className="min-h-[44px] text-[16px] font-normal text-[#8E8E93] hover:text-[#1C1C1E]"
+                  >
+                    Contact support
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {!browserBannerDismissed ? (
+          <div
+            className="fixed left-0 right-0 top-0 z-[99] flex items-center gap-3 bg-[#FFF9E5] px-4 py-3 text-[14px] text-[#1C1C1E]"
+            style={{ borderBottom: "1px solid rgba(0,0,0,0.06)" }}
+          >
+            <span className="shrink-0 text-[#007AFF]" aria-hidden>
+              ℹ
+            </span>
+            <p className="min-w-0 flex-1">
+              For best results, use Safari, Chrome, or Edge. Some features may
+              not work in this browser.
+            </p>
+            <button
+              type="button"
+              onClick={() => setBrowserBannerDismissed(true)}
+              aria-label="Dismiss browser notice"
+              className="shrink-0 rounded p-1 text-[#8E8E93] hover:bg-black/5 hover:text-[#1C1C1E]"
+            >
+              ×
+            </button>
+          </div>
+        ) : null}
+        <div className="mx-auto flex max-w-xl flex-col gap-10 px-4 py-10 sm:py-12">
           <header className="space-y-2">
             {renderProgress()}
             <div className="step2-header-in flex items-center gap-4">
@@ -488,7 +741,7 @@ export default function Home() {
                 <h1 className="text-2xl font-semibold tracking-tight text-[#1C1C1E]">
                   Enter application data
                 </h1>
-                <p className="mt-1 text-[17px] text-[#8E8E93]">
+                <p className="mt-1 text-[16px] text-[#8E8E93]">
                   Confirm what the approved record says.
                 </p>
               </div>
@@ -496,27 +749,27 @@ export default function Home() {
           </header>
 
           {error ? (
-            <div className="rounded-2xl border border-[#FF3B30]/30 bg-red-50 px-4 py-3 text-[17px] text-[#FF3B30] shadow-sm">
+            <div className="rounded-[20px] border border-[#FF3B30]/30 bg-red-50 px-4 py-3 text-[16px] text-[#FF3B30] depth-1">
               {error}
             </div>
           ) : null}
 
-          <main className="space-y-6">
+          <main className="flex flex-col gap-10">
             {firstFile ? (
               <section
-                className="step2-preview-in flex h-[88px] items-center gap-4 rounded-[16px] bg-white px-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
+                className="step2-preview-in flex h-[88px] items-center gap-4 rounded-[20px] bg-white px-4 depth-1"
                 style={{ minHeight: "88px" }}
               >
                 <img
                   src={URL.createObjectURL(firstFile)}
                   alt=""
-                  className="h-[72px] w-[72px] shrink-0 rounded-[12px] bg-[#F2F2F7] object-contain"
+                  className="h-[72px] w-[72px] shrink-0 rounded-[16px] bg-[#F2F2F7] object-contain"
                 />
                 <div className="min-w-0 flex-1">
                   <p className="text-[14px] font-normal text-[#8E8E93]">
                     Label image ready
                   </p>
-                  <p className="mt-0.5 truncate text-[13px] text-[#8E8E93]">
+                  <p className="mt-0.5 truncate text-[14px] text-[#8E8E93]">
                     {fileList.length > 1
                       ? `${fileList.length} labels · same data for all`
                       : firstFile.name}
@@ -526,7 +779,7 @@ export default function Home() {
             ) : null}
 
             <section
-              className="overflow-hidden rounded-[16px] bg-white p-8 shadow-[0_2px_12px_rgba(0,0,0,0.06)]"
+              className="overflow-hidden rounded-[20px] bg-white p-8 depth-1"
               style={{ padding: "32px" }}
             >
               <form
@@ -537,7 +790,7 @@ export default function Home() {
                 }}
               >
                 <p
-                  className="text-[13px] font-semibold uppercase tracking-wider text-[#8E8E93]"
+                  className="text-[14px] font-semibold uppercase tracking-wider text-[#8E8E93]"
                   style={{ letterSpacing: "0.5px" }}
                 >
                   Application record
@@ -549,7 +802,7 @@ export default function Home() {
                 >
                   <label
                     htmlFor="brand-name"
-                    className="mb-1.5 block text-[13px] font-medium text-[#8E8E93]"
+                    className="mb-1.5 block text-[14px] font-medium text-[#8E8E93]"
                   >
                     Brand name
                   </label>
@@ -565,7 +818,7 @@ export default function Home() {
                         }))
                       }
                       placeholder="e.g. OLD TOM DISTILLERY"
-                      className="input-apple h-14 w-full rounded-[12px] border border-[#E5E5EA] bg-white px-4 text-[17px] text-[#1C1C1E] placeholder:opacity-60"
+                      className="input-apple h-14 w-full rounded-[16px] border border-[#E5E5EA] bg-white px-4 text-[16px] text-[#1C1C1E] placeholder:opacity-60"
                       style={{ minHeight: "56px" }}
                     />
                     {applicationData.brandName.trim() ? (
@@ -577,7 +830,7 @@ export default function Home() {
                       </span>
                     ) : null}
                   </div>
-                  <p className="mt-1 text-[13px] text-[#8E8E93]" style={{ opacity: 0.6 }}>
+                  <p className="mt-1 text-[14px] text-[#8E8E93]" style={{ opacity: 0.6 }}>
                     Primary brand name on the approved application
                   </p>
                 </div>
@@ -586,7 +839,7 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => setStep2ShowAllFields(true)}
-                    className="step2-field-in flex w-full items-center justify-center gap-2 rounded-[12px] border border-[#E5E5EA] bg-white py-3.5 text-[17px] font-normal text-[#007AFF] transition-colors hover:bg-[#F2F2F7]"
+                    className="step2-field-in flex w-full items-center justify-center gap-2 rounded-[16px] border border-[#E5E5EA] bg-white py-3.5 text-[16px] font-normal text-[#007AFF] transition-all duration-500 hover:bg-[#F2F2F7] active:scale-[0.97]"
                     style={{ minHeight: "56px", animationDelay: "80ms" }}
                   >
                     Show all fields
@@ -599,7 +852,7 @@ export default function Home() {
                     >
                       <label
                         htmlFor="class-type"
-                        className="block text-[13px] font-medium text-[#8E8E93]"
+                        className="block text-[14px] font-medium text-[#8E8E93]"
                       >
                         Class / type
                       </label>
@@ -614,7 +867,7 @@ export default function Home() {
                           }))
                         }
                         placeholder="e.g. Kentucky Straight Bourbon Whiskey"
-                        className="input-apple h-14 w-full rounded-[12px] border border-[#E5E5EA] bg-white px-4 text-[17px] text-[#1C1C1E] placeholder:opacity-60"
+                        className="input-apple h-14 w-full rounded-[16px] border border-[#E5E5EA] bg-white px-4 text-[16px] text-[#1C1C1E] placeholder:opacity-60"
                         style={{ minHeight: "56px" }}
                       />
                     </div>
@@ -626,7 +879,7 @@ export default function Home() {
                       <div className="space-y-1.5">
                         <label
                           htmlFor="alcohol"
-                          className="block text-[13px] font-medium text-[#8E8E93]"
+                          className="block text-[14px] font-medium text-[#8E8E93]"
                         >
                           Alcohol content
                         </label>
@@ -641,14 +894,14 @@ export default function Home() {
                             }))
                           }
                           placeholder="e.g. 45% Alc./Vol. (90 Proof)"
-                          className="input-apple h-14 w-full rounded-[12px] border border-[#E5E5EA] bg-white px-4 text-[17px] text-[#1C1C1E] placeholder:opacity-60"
+                          className="input-apple h-14 w-full rounded-[16px] border border-[#E5E5EA] bg-white px-4 text-[16px] text-[#1C1C1E] placeholder:opacity-60"
                           style={{ minHeight: "56px" }}
                         />
                       </div>
                       <div className="space-y-1.5">
                         <label
                           htmlFor="net-contents"
-                          className="block text-[13px] font-medium text-[#8E8E93]"
+                          className="block text-[14px] font-medium text-[#8E8E93]"
                         >
                           Net contents
                         </label>
@@ -663,7 +916,7 @@ export default function Home() {
                             }))
                           }
                           placeholder="e.g. 750 mL"
-                          className="input-apple h-14 w-full rounded-[12px] border border-[#E5E5EA] bg-white px-4 text-[17px] text-[#1C1C1E] placeholder:opacity-60"
+                          className="input-apple h-14 w-full rounded-[16px] border border-[#E5E5EA] bg-white px-4 text-[16px] text-[#1C1C1E] placeholder:opacity-60"
                           style={{ minHeight: "56px" }}
                         />
                       </div>
@@ -671,11 +924,21 @@ export default function Home() {
                   </>
                 )}
 
+                {step2ShowAllFields && (
+                  <button
+                    type="button"
+                    onClick={() => setStep2ShowAllFields(false)}
+                    className="step2-field-in flex w-full items-center justify-center gap-2 rounded-[16px] border border-[#E5E5EA] bg-white py-3 text-[14px] font-normal text-[#8E8E93] transition-all duration-300 hover:bg-[#F2F2F7] active:scale-[0.98]"
+                  >
+                    Show fewer fields
+                  </button>
+                )}
+
                 {!step2EditingWarning ? (
                   <button
                     type="button"
                     onClick={() => setStep2EditingWarning(true)}
-                    className="step2-field-in flex w-full items-center justify-between gap-3 rounded-[12px] border border-[#E5E5EA] bg-white px-4 py-3.5 text-left text-[17px] text-[#1C1C1E] transition-colors hover:bg-[#F2F2F7]"
+                    className="step2-field-in flex w-full items-center justify-between gap-3 rounded-[16px] border border-[#E5E5EA] bg-white px-4 py-3.5 text-left text-[16px] text-[#1C1C1E] transition-colors hover:bg-[#F2F2F7]"
                     style={{ minHeight: "56px", animationDelay: "160ms" }}
                   >
                     <span className="text-[#8E8E93]">
@@ -695,14 +958,14 @@ export default function Home() {
                     <div className="flex items-center justify-between">
                       <label
                         htmlFor="government-warning"
-                        className="block text-[13px] font-medium text-[#8E8E93]"
+                        className="block text-[14px] font-medium text-[#8E8E93]"
                       >
                         Government health warning (exact text)
                       </label>
                       <button
                         type="button"
                         onClick={() => setStep2EditingWarning(false)}
-                        className="text-[13px] text-[#007AFF]"
+                        className="text-[14px] text-[#007AFF]"
                       >
                         Collapse
                       </button>
@@ -718,11 +981,11 @@ export default function Home() {
                           }))
                         }
                         rows={6}
-                        className="input-apple w-full resize-y rounded-[12px] border border-[#E5E5EA] bg-white px-4 py-3 font-mono text-[15px] leading-relaxed text-[#1C1C1E] placeholder:opacity-60"
+                        className="input-apple w-full resize-y rounded-[16px] border border-[#E5E5EA] bg-white px-4 py-3 font-mono text-[16px] leading-relaxed text-[#1C1C1E] placeholder:opacity-60"
                         style={{ lineHeight: 1.6 }}
                       />
                       <p
-                        className="absolute bottom-2 right-3 text-[11px] text-[#8E8E93]"
+                        className="absolute bottom-2 right-3 text-[14px] text-[#8E8E93]"
                         style={{ opacity: 0.8 }}
                       >
                         {warningCharCount} characters
@@ -735,18 +998,17 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => setStep(1)}
-                    className="self-start text-[17px] font-normal text-[#007AFF] transition-opacity hover:opacity-80"
+                    className="self-start text-[16px] font-normal text-[#007AFF] transition-opacity hover:opacity-80"
                   >
                     Back
                   </button>
                   <button
                     type="submit"
                     disabled={isProcessing || !fileList.length}
-                    className="flex w-full min-h-[56px] items-center justify-center gap-2 rounded-[12px] px-6 py-4 text-[18px] font-semibold text-white shadow-lg transition-all duration-300 ease-out hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:grayscale disabled:hover:scale-100"
+                    className="flex w-full min-h-[56px] items-center justify-center gap-2 rounded-[16px] px-6 py-4 text-[16px] font-semibold text-white transition-all duration-500 hover:scale-[1.02] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:grayscale disabled:hover:scale-100 depth-2"
                     style={{
                       background:
                         "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
-                      boxShadow: "0 4px 16px rgba(0, 122, 255, 0.3)",
                     }}
                   >
                     {isProcessing ? (
@@ -766,6 +1028,69 @@ export default function Home() {
             </section>
           </main>
         </div>
+        {isProcessing && fileList.length === 1 && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-[#F5F7FA]/90"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <div className="flex flex-col items-center gap-4">
+              <span
+                className="h-5 w-5 animate-spin rounded-full border-2 border-[#007AFF] border-t-transparent"
+                aria-hidden
+              />
+              <span className="text-[17px] font-semibold text-[#1C1C1E]">
+                Processing...
+              </span>
+            </div>
+          </div>
+        )}
+        {isProcessing && fileList.length >= 2 && (
+          <div
+            className="fixed bottom-0 left-0 right-0 z-50 flex justify-center px-0 sm:px-4"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <div
+              className="flex w-full max-w-[420px] flex-col justify-center gap-3 rounded-t-[20px] px-5 pb-5 pt-4"
+              style={{
+                background: "rgba(255, 255, 255, 0.95)",
+                backdropFilter: "blur(40px)",
+                WebkitBackdropFilter: "blur(40px)",
+                boxShadow: "0 -4px 16px rgba(0, 0, 0, 0.06)",
+                borderTop: "1px solid rgba(0, 0, 0, 0.04)",
+                minHeight: "88px",
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <span
+                  className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-[#1C1C1E] border-t-transparent"
+                  aria-hidden
+                />
+                <span className="text-[17px] font-semibold text-[#1C1C1E]">
+                  Processing label {processingCurrent} of {processingTotal}
+                </span>
+              </div>
+              <div
+                className="h-1.5 w-full overflow-hidden rounded-full bg-[#E5E5EA]"
+                role="progressbar"
+                aria-valuenow={processingTotal ? processingCurrent : 0}
+                aria-valuemin={0}
+                aria-valuemax={processingTotal}
+                aria-label={`Processing label ${processingCurrent} of ${processingTotal}`}
+              >
+                <div
+                  className="h-full rounded-full bg-[#007AFF] transition-all duration-300 ease-out"
+                  style={{
+                    width: processingTotal
+                      ? `${(processingCurrent / processingTotal) * 100}%`
+                      : "0%",
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -775,14 +1100,49 @@ export default function Home() {
     const safeIndex =
       currentResultIndex < results.length ? currentResultIndex : 0;
     const activeResult = hasResults ? results[safeIndex] : null;
-
+    const failedCount = results.filter((r) => r.status === "ocr_failed").length;
+    const firstFailedIndex = results.findIndex((r) => r.status === "ocr_failed");
+    const activeIsSuccess =
+      activeResult != null && activeResult.status === "success";
+    const activeIsFailed =
+      activeResult != null && activeResult.status === "ocr_failed";
     const anyIssue =
-      activeResult?.checks.some(
+      activeIsSuccess &&
+      activeResult.checks.some(
         (check) => check.status === "mismatch" || check.status === "missing",
-      ) ?? false;
+      );
 
     return (
-      <div className="min-h-screen bg-[#F2F2F7] text-[#1C1C1E]">
+      <>
+        {catastrophicError ? (
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+            style={{ backdropFilter: "blur(12px)", backgroundColor: "rgba(0,0,0,0.2)" }}
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="catastrophic-error-heading"
+          >
+            <div className="w-full max-w-md animate-fade-scale-in rounded-[20px] bg-white p-6 depth-3" style={{ animationDuration: "0.3s" }}>
+              <div className="flex flex-col items-center gap-4 text-center">
+                <span className="flex h-10 w-10 items-center justify-center text-[40px] text-[#8E8E93]" aria-hidden>⚠</span>
+                <h2 id="catastrophic-error-heading" className="text-[22px] font-semibold text-[#1C1C1E]">Something went wrong</h2>
+                <p className="text-[16px] leading-relaxed text-[#8E8E93]">{catastrophicError}</p>
+                <div className="flex w-full flex-col gap-3 pt-2">
+                  <button type="button" onClick={() => setCatastrophicError(null)} className="flex min-h-[56px] w-full items-center justify-center rounded-[16px] bg-[#007AFF] px-4 py-3 text-[16px] font-semibold text-white depth-2">Try again</button>
+                  <a href="mailto:support@example.com?subject=TTB%20Label%20App%20Support" className="min-h-[44px] text-[16px] font-normal text-[#8E8E93] hover:text-[#1C1C1E]">Contact support</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {!browserBannerDismissed ? (
+          <div className="fixed left-0 right-0 top-0 z-[99] flex items-center gap-3 bg-[#FFF9E5] px-4 py-3 text-[14px] text-[#1C1C1E]" style={{ borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
+            <span className="shrink-0 text-[#007AFF]" aria-hidden>ℹ</span>
+            <p className="min-w-0 flex-1">For best results, use Safari, Chrome, or Edge. Some features may not work in this browser.</p>
+            <button type="button" onClick={() => setBrowserBannerDismissed(true)} aria-label="Dismiss browser notice" className="shrink-0 rounded p-1 text-[#8E8E93] hover:bg-black/5 hover:text-[#1C1C1E]">×</button>
+          </div>
+        ) : null}
+      <div className="min-h-screen depth-0 text-[#1C1C1E]">
         <div className="mx-auto flex max-w-5xl flex-col gap-10 px-4 py-10">
           <header className="space-y-2">
             {renderProgress()}
@@ -794,7 +1154,7 @@ export default function Home() {
                 <h1 className="text-2xl font-semibold tracking-tight text-[#1C1C1E]">
                   Comparison results
                 </h1>
-                <p className="mt-1 text-[17px] text-[#8E8E93]">
+                <p className="mt-1 text-[16px] text-[#8E8E93]">
                   Review how the label matches the application data.
                 </p>
               </div>
@@ -802,21 +1162,146 @@ export default function Home() {
           </header>
 
           {error ? (
-            <div className="rounded-2xl border border-[#FF3B30]/30 bg-red-50 px-4 py-3 text-[17px] text-[#FF3B30] shadow-sm">
+            <div className="rounded-[20px] border border-[#FF3B30]/30 bg-red-50 px-4 py-3 text-[16px] text-[#FF3B30] depth-1">
               {error}
             </div>
           ) : null}
 
+          {failedCount > 0 && results.length > 1 && (
+            <section
+              ref={scrollToFirstFailedRef}
+              className="animate-fade-scale-in rounded-[20px] px-5 py-4 depth-1"
+              style={{
+                background: "linear-gradient(135deg, #FFF4E5 0%, #FFF9F0 100%)",
+              }}
+              role="alert"
+              aria-live="polite"
+            >
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 text-[28px] text-[#FF9F0A]" aria-hidden>
+                  ⚠
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[17px] font-semibold text-[#1C1C1E]">
+                    {failedCount} label{failedCount !== 1 ? "s" : ""} couldn't
+                    be processed
+                  </p>
+                  <p className="mt-1 text-[15px] text-[#8E8E93]">
+                    Upload clearer images to try again.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      document.getElementById("first-failed-label")?.scrollIntoView({ behavior: "smooth" });
+                    }}
+                    className="mt-3 text-[16px] font-semibold text-[#007AFF] hover:opacity-80"
+                  >
+                    Review failed labels ↓
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
+
           <main className="flex flex-col gap-10">
             {!hasResults || !activeResult ? (
-              <section className="rounded-[24px] bg-white p-8 text-[17px] text-[#8E8E93] shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+              <section className="rounded-[20px] bg-white p-8 text-[16px] text-[#8E8E93] depth-1">
                 No results yet. Run a verification to see comparisons.
+              </section>
+            ) : activeIsFailed ? (
+              /* Scenario 1: OCR failed card */
+              <section
+                id={safeIndex === firstFailedIndex ? "first-failed-label" : undefined}
+                className="animate-error-card-in rounded-[20px] p-6 depth-1"
+                style={{
+                  background: "linear-gradient(180deg, #FFE5E5 0%, #FFF0F0 100%)",
+                }}
+                role="alert"
+                aria-live="assertive"
+              >
+                <div className="flex flex-col gap-5">
+                  <div className="flex items-start gap-4">
+                    <span
+                      className="animate-error-warning-pulse flex h-12 w-12 shrink-0 items-center justify-center text-[48px] leading-none text-[#FF3B30]"
+                      aria-hidden
+                    >
+                      ⚠
+                    </span>
+                    <div>
+                      <h2 className="text-[20px] font-semibold text-[#1C1C1E]">
+                        Couldn't read this label
+                      </h2>
+                      <p className="mt-2 text-[16px] text-[#8E8E93]">
+                        The image quality may be too low, or the text might be
+                        unclear.
+                      </p>
+                    </div>
+                  </div>
+                  {fileList[safeIndex] && (
+                    <div className="flex justify-center">
+                      <img
+                        src={URL.createObjectURL(fileList[safeIndex]!)}
+                        alt=""
+                        className="h-[120px] rounded-[16px] border border-[#E5E5EA] bg-white object-contain"
+                      />
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-3">
+                    <input
+                      ref={replaceFileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="sr-only"
+                      aria-label="Upload a clearer photo"
+                      onChange={(e) => {
+                        const i = pendingReplaceResultIndex;
+                        setPendingReplaceResultIndex(null);
+                        const file = e.target.files?.[0];
+                        if (i != null && file) replaceFileAtResultIndex(i, file);
+                        e.target.value = "";
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPendingReplaceResultIndex(safeIndex);
+                        replaceFileInputRef.current?.click();
+                      }}
+                      disabled={replacingResultIndex !== null}
+                      className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[16px] bg-[#007AFF] px-4 py-3 text-[16px] font-semibold text-white depth-2 transition-opacity hover:opacity-95 disabled:opacity-60"
+                    >
+                      {replacingResultIndex === safeIndex ? (
+                        <>
+                          <span className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                          Processing new image...
+                        </>
+                      ) : (
+                        "Upload a clearer photo"
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => skipLabelAtResultIndex(safeIndex)}
+                      className="min-h-[44px] text-[16px] font-normal text-[#8E8E93] hover:text-[#1C1C1E]"
+                    >
+                      Skip this label
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => runSingleImageVerification(safeIndex)}
+                      disabled={replacingResultIndex !== null}
+                      className="min-h-[44px] text-[16px] font-normal text-[#8E8E93] hover:text-[#1C1C1E] disabled:opacity-60"
+                    >
+                      Try again
+                    </button>
+                  </div>
+                </div>
               </section>
             ) : (
               <>
-                {/* Hero status card – 120px min height, spring entrance */}
+                {/* Hero status card */}
                 <section
-                  className={`animate-fade-scale-in flex min-h-[120px] items-center rounded-[24px] p-6 text-white shadow-[0_8px_24px_rgba(0,0,0,0.08)] ${
+                  className={`animate-fade-scale-in flex min-h-[120px] items-center rounded-[20px] p-6 text-white depth-3 ${
                     anyIssue
                       ? "bg-gradient-to-r from-[#FF9F0A] to-[#FF9500]"
                       : "bg-gradient-to-r from-[#30D158] to-[#28CD4F]"
@@ -832,30 +1317,30 @@ export default function Home() {
                         ? "Some fields need review"
                         : "Label matches the application data"}
                     </p>
-                    <p className="mt-1 text-[15px] opacity-90">
-                      Processing time: {activeResult.durationMs.toFixed(0)} ms
+                    <p className="mt-1 text-[14px] opacity-90">
+                      Processing time: {activeResult.status === "success" ? activeResult.durationMs.toFixed(0) : ""} ms
                     </p>
                   </div>
                 </section>
 
-                {/* Image + checklist – 40px gap */}
+                {/* Image + checklist – 40px gap, content ~70% */}
                 <section className="flex flex-col gap-10 lg:flex-row">
                   <div className="flex w-full flex-col items-center lg:w-1/3">
                     <div
-                      className="w-full max-w-xs rounded-[24px] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]"
+                      className="w-full max-w-xs rounded-[20px] bg-white p-4 depth-1"
                       style={{ border: "1px solid rgba(0,0,0,0.06)" }}
                     >
                       <p className="text-[14px] font-medium text-[#1C1C1E]">
                         Label image
                       </p>
-                      <p className="mt-1 text-[13px] text-[#8E8E93]">
+                      <p className="mt-1 text-[14px] text-[#8E8E93]">
                         {activeResult.fileName}
                       </p>
                       {fileList[safeIndex] ? (
                         <img
                           src={URL.createObjectURL(fileList[safeIndex]!)}
                           alt={activeResult.fileName}
-                          className="mt-3 w-full rounded-2xl bg-[#F2F2F7] object-contain"
+                          className="mt-3 w-full rounded-[16px] bg-[#F2F2F7] object-contain"
                           style={{ border: "1px solid rgba(0,0,0,0.06)" }}
                         />
                       ) : null}
@@ -863,7 +1348,7 @@ export default function Home() {
 
                     {results.length > 1 ? (
                       <div className="mt-6 flex flex-col items-center gap-3">
-                        <p className="text-[15px] font-semibold text-[#1C1C1E]">
+                        <p className="text-[14px] font-semibold text-[#1C1C1E]">
                           Label {safeIndex + 1} of {results.length}
                         </p>
                         <div className="flex items-center gap-4">
@@ -928,7 +1413,7 @@ export default function Home() {
                           return (
                             <div
                               key={check.field + index.toString()}
-                              className="animate-fade-scale-in rounded-[24px] bg-[#E5E5EA]/40 px-4 py-3.5 shadow-sm"
+                              className="animate-fade-scale-in rounded-[20px] bg-[#E5E5EA]/40 px-4 py-3.5 depth-1"
                               style={{
                                 animationDelay: `${baseDelay}ms`,
                                 animationDuration: "0.4s",
@@ -940,7 +1425,7 @@ export default function Home() {
                                 <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#30D158]/20 text-[#30D158]">
                                   ✓
                                 </div>
-                                <p className="text-base text-[#1C1C1E]">
+                                <p className="text-[16px] text-[#1C1C1E]">
                                   {labelMap[check.field] ?? check.field} matches
                                   the application record.
                                 </p>
@@ -953,7 +1438,7 @@ export default function Home() {
                           return (
                             <div
                               key={check.field + index.toString()}
-                              className="step3-field-pulse-once animate-fade-scale-in rounded-[24px] bg-[#FFF4E5] px-4 py-4 shadow-sm"
+                              className="step3-field-pulse-once animate-fade-scale-in rounded-[20px] bg-[#FFF4E5] px-4 py-4 depth-1"
                               style={{
                                 animationDelay: `${baseDelay}ms`,
                                 animationDuration: "0.4s",
@@ -961,13 +1446,13 @@ export default function Home() {
                                   "cubic-bezier(0.34, 1.56, 0.64, 1)",
                               }}
                             >
-                              <p className="text-base font-medium text-[#1C1C1E]">
+                              <p className="text-[16px] font-medium text-[#1C1C1E]">
                                 {labelMap[check.field] ?? check.field} needs
                                 review
                               </p>
                               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                                 <div className="space-y-1">
-                                  <span className="inline-flex rounded-full bg-[#E5E5EA] px-3 py-1 text-xs font-medium text-[#1C1C1E]">
+                                  <span className="inline-flex rounded-full bg-[#E5E5EA] px-3 py-1 text-[14px] font-medium text-[#1C1C1E]">
                                     Expected
                                   </span>
                                   <p className="mt-1 rounded-lg bg-white px-3 py-2 font-mono text-[18px] text-[#1C1C1E]">
@@ -975,7 +1460,7 @@ export default function Home() {
                                   </p>
                                 </div>
                                 <div className="space-y-1">
-                                  <span className="inline-flex rounded-full bg-[#FF9F0A]/25 px-3 py-1 text-xs font-medium text-[#B65E00]">
+                                  <span className="inline-flex rounded-full bg-[#FF9F0A]/25 px-3 py-1 text-[14px] font-medium text-[#B65E00]">
                                     Found
                                   </span>
                                   <p className="mt-1 rounded-lg bg-white px-3 py-2 font-mono text-[18px] text-[#1C1C1E]">
@@ -984,7 +1469,7 @@ export default function Home() {
                                 </div>
                               </div>
                               {check.notes ? (
-                                <p className="mt-2 text-[13px] text-[#8E8E93]">
+                                <p className="mt-2 text-[14px] text-[#8E8E93]">
                                   {check.notes}
                                 </p>
                               ) : null}
@@ -995,7 +1480,7 @@ export default function Home() {
                         return (
                           <div
                             key={check.field + index.toString()}
-                            className="step3-field-pulse-once animate-fade-scale-in rounded-[24px] bg-red-50 px-4 py-4 shadow-sm"
+                            className="step3-field-pulse-once animate-fade-scale-in rounded-[20px] bg-red-50 px-4 py-4 depth-1"
                             style={{
                               animationDelay: `${baseDelay}ms`,
                               animationDuration: "0.4s",
@@ -1003,12 +1488,12 @@ export default function Home() {
                                 "cubic-bezier(0.34, 1.56, 0.64, 1)",
                             }}
                           >
-                            <p className="text-base font-medium text-[#FF3B30]">
+                            <p className="text-[16px] font-medium text-[#FF3B30]">
                               {labelMap[check.field] ?? check.field} not found
                               on the label.
                             </p>
                             {check.expected ? (
-                              <p className="mt-2 text-[13px] text-[#1C1C1E]">
+                              <p className="mt-2 text-[14px] text-[#1C1C1E]">
                                 Expected:{" "}
                                 <span className="font-mono text-[18px]">
                                   {check.expected}
@@ -1016,7 +1501,7 @@ export default function Home() {
                               </p>
                             ) : null}
                             {check.notes ? (
-                              <p className="mt-1 text-[13px] text-[#8E8E93]">
+                              <p className="mt-1 text-[14px] text-[#8E8E93]">
                                 {check.notes}
                               </p>
                             ) : null}
@@ -1033,7 +1518,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={resetWizard}
-                className="inline-flex min-h-[56px] items-center justify-center rounded-[12px] bg-[#0A84FF] px-6 py-4 text-[18px] font-semibold text-white shadow-[0_4px_16px_rgba(10,132,255,0.3)] transition-all duration-150 hover:scale-[1.02] hover:shadow-lg active:scale-[0.97]"
+                className="inline-flex min-h-[56px] w-full max-w-md items-center justify-center rounded-[16px] bg-[#007AFF] px-6 py-4 text-[16px] font-semibold text-white depth-2 transition-all duration-300 hover:scale-[1.02] hover:opacity-95 active:scale-[0.98]"
               >
                 Check another label
               </button>
@@ -1041,11 +1526,12 @@ export default function Home() {
           </main>
         </div>
       </div>
+    </>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 text-slate-700">
+    <div className="min-h-screen bg-[#F5F7FA] text-slate-700">
       <div className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-8 sm:px-8">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -1383,7 +1869,9 @@ export default function Home() {
                 </div>
               ) : (
                 <div className="mt-3 space-y-4">
-                  {results.map((result) => (
+                  {results
+                    .filter((r): r is Extract<typeof results[number], { status: "success" }> => r.status === "success")
+                    .map((result) => (
                     <div
                       key={result.fileName}
                       className="rounded-lg border border-slate-200 bg-slate-50 p-3"
@@ -1474,7 +1962,7 @@ export default function Home() {
                         <summary className="cursor-pointer select-none text-[10px] font-medium text-slate-600">
                           Show raw OCR text (for troubleshooting)
                         </summary>
-                        <pre className="mt-2 max-h-40 overflow-y-auto rounded bg-slate-900/95 p-2 text-[10px] text-slate-100">
+                        <pre className="mt-2 max-h-40 overflow-y-auto rounded bg-[#F5F7FA] p-2 text-[10px] text-slate-700 ring-1 ring-slate-200">
                           {result.rawOcrText || "No text detected."}
                         </pre>
                       </details>
@@ -1484,8 +1972,8 @@ export default function Home() {
               )}
             </div>
 
-            <div className="rounded-xl bg-slate-900 p-4 text-xs text-slate-100">
-              <h2 className="text-sm font-semibold text-white">
+            <div className="rounded-xl bg-white p-4 text-xs text-slate-700 ring-1 ring-slate-200 shadow-sm">
+              <h2 className="text-sm font-semibold text-slate-900">
                 How this prototype fits your workflow
               </h2>
               <ul className="mt-2 space-y-1 list-disc pl-5">

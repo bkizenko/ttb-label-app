@@ -48,7 +48,10 @@ export const compareLabelData = (
     opts?: { loose?: boolean },
   ) => {
     const expectedRaw = application[field];
-    const actualRaw = extracted[field];
+    const actualRaw =
+      field === "governmentWarning"
+        ? extracted.governmentWarningText
+        : extracted[field as keyof ExtractedLabelData];
 
     if (!actualRaw) {
       checks.push({
@@ -61,7 +64,10 @@ export const compareLabelData = (
     }
 
     const expected = normalizeWhitespace(expectedRaw);
-    const actual = normalizeWhitespace(actualRaw);
+    const actual =
+      typeof actualRaw === "string"
+        ? normalizeWhitespace(actualRaw)
+        : normalizeWhitespace("");
 
     const isMatch = opts?.loose
       ? normalizeForLooseMatch(expected) === normalizeForLooseMatch(actual)
