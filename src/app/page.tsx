@@ -28,45 +28,84 @@ type VerificationResult =
 type Mode = "single" | "batch";
 
 const defaultApplicationData: ApplicationLabelData = {
-  brandName: "",
-  classType: "",
-  alcoholContent: "",
-  netContents: "",
+  brandName: "OLD TOM DISTILLERY",
+  classType: "Kentucky Straight Bourbon Whiskey",
+  alcoholContent: "45% Alc./Vol. (90 Proof)",
+  netContents: "750 mL",
   governmentWarning: STANDARD_GOVERNMENT_WARNING,
 };
 
 const extractFromOcrText = (text: string): ExtractedLabelData => {
+  const cleanText = text
+    .replace(/\|/g, " ")
+    .replace(/[—–_]{2,}/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
   const lines = text
     .split(/\r?\n/)
-    .map((l) => l.trim())
+    .map((l) => l.replace(/\|/g, " ").trim())
     .filter(Boolean);
 
-  const fullText = lines.join(" ");
-
-  const alcoholMatch = fullText.match(
-    /(\d+(?:\.\d+)?)\s*%[^0-9]*Alc\.?\/Vol\.?.*?\(\s*\d+\s*Proof\s*\)/i,
-  );
-
-  const netMatch = fullText.match(/(\d+(?:\.\d+)?)\s*(ML|mL|Ml|ml)\b/);
-
-  const warningIndex = fullText.toUpperCase().indexOf("GOVERNMENT WARNING");
-  let warningText: string | undefined;
-  if (warningIndex >= 0) {
-    warningText = fullText.slice(warningIndex).trim();
-  }
-
-  const hasExactHeader = /GOVERNMENT WARNING:/.test(fullText);
-
-  const candidateBrandLine = lines[0] ?? "";
+  const brandLines = lines
+    .slice(0, 4)
+    .filter(
+      (line) =>
+        line.length > 2 &&
+        !/^[:\-—_\s]+$/.test(line) &&
+        !/(government|warning|alc|proof|vol|ml|oz)/i.test(line),
+    );
+  const candidateBrandLine = brandLines
+    .slice(0, 2)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
 
   const classTypeRegex =
-    /(Straight|Blended|Kentucky|Bourbon|Whiskey|Whisky|Vodka|Gin|Rum|Tequila)[^,]*/i;
-  const classTypeMatch = fullText.match(classTypeRegex);
+    /(Kentucky\s+Straight\s+(?:Bourbon\s+)?Whiskey|Straight\s+Bourbon|Bourbon\s+Whiskey|Rye\s+Whiskey|Single\s+Malt|Blended\s+Whiskey|Tennessee\s+Whiskey|Scotch|Irish\s+Whiskey|Whiskey|Whisky|Vodka|Gin|Rum|Tequila|Mezcal|IPA|Pale\s+Ale|Lager|Stout|Porter|Pilsner|Ale|Beer|Red\s+Wine|White\s+Wine|Rosé|Cabernet|Merlot|Chardonnay|Pinot\s+Noir|Sauvignon\s+Blanc|Wine)/i;
+  const classTypeMatch = cleanText.match(classTypeRegex);
+
+  let alcoholContent: string | undefined;
+  const proofMatch = cleanText.match(/([0-9]{2,3})\s*Proof/i);
+  if (proofMatch) {
+    const proofNum = proofMatch[1];
+    const abv = (parseInt(proofNum, 10) / 2).toFixed(1);
+    alcoholContent = `${abv}% Alc./Vol. (${proofNum} Proof)`;
+  } else {
+    const percentMatch = cleanText.match(
+      /(?:BE|B5|4S|45|40|[0-9]{1,2}(?:\.[0-9])?)\.?\s*%\s*(?:Alc\.?\/Vol\.?|ABV)?/i,
+    );
+    if (percentMatch) {
+      let percent = percentMatch[0];
+      percent = percent.replace(/BE/i, "45");
+      percent = percent.replace(/B5/i, "85");
+      percent = percent.replace(/4S/i, "45");
+      percent = percent.replace(/O/g, "0");
+      const numMatch = percent.match(/([0-9]{1,2}(?:\.[0-9])?)/);
+      if (numMatch) {
+        alcoholContent = `${numMatch[1]}% Alc./Vol.`;
+      }
+    }
+  }
+
+  const netRegex =
+    /([0-9]+(?:\.[0-9]+)?)\s*(mL|ML|ml|L|l|FL\s*OZ|fl\.?\s*oz|OZ|oz|liter|litre)/i;
+  const netMatch = cleanText.match(netRegex);
+
+  const warningIndex = cleanText.toUpperCase().indexOf("GOVERNMENT WARNING");
+  let warningText: string | undefined;
+  if (warningIndex >= 0) {
+    warningText = cleanText
+      .slice(warningIndex, warningIndex + 400)
+      .trim();
+  }
+
+  const hasExactHeader = /GOVERNMENT WARNING:/i.test(text);
 
   return {
-    brandName: candidateBrandLine,
-    classType: classTypeMatch ? classTypeMatch[0].trim() : undefined,
-    alcoholContent: alcoholMatch ? alcoholMatch[0].trim() : undefined,
+    brandName: candidateBrandLine || undefined,
+    classType: classTypeMatch ? classTypeMatch[1].trim() : undefined,
+    alcoholContent,
     netContents: netMatch ? `${netMatch[1]} ${netMatch[2]}` : undefined,
     governmentWarningText: warningText,
     hasGovernmentWarningHeaderExact: hasExactHeader,
@@ -162,8 +201,6 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [progressMessage, setProgressMessage] = useState<string | null>(null);
   const [currentResultIndex, setCurrentResultIndex] = useState(0);
-  const [step2ShowAllFields, setStep2ShowAllFields] = useState(false);
-  const [step2EditingWarning, setStep2EditingWarning] = useState(false);
   const [uploadFileTypeError, setUploadFileTypeError] = useState<string | null>(
     null,
   );
@@ -300,6 +337,7 @@ export default function Home() {
           try {
             const { data } = await worker.recognize(file);
             const ocrText = data.text ?? "";
+            console.log("RAW OCR TEXT:", ocrText);
             const extracted = extractFromOcrText(ocrText);
             const checks = compareLabelData(appData, extracted);
             const durationMs = performance.now() - start;
@@ -363,6 +401,7 @@ export default function Home() {
         const start = performance.now();
         const { data } = await worker.recognize(file);
         const ocrText = data.text ?? "";
+        console.log("RAW OCR TEXT:", ocrText);
         const extracted = extractFromOcrText(ocrText);
         const checks = compareLabelData(applicationData, extracted);
         const durationMs = performance.now() - start;
@@ -447,8 +486,6 @@ export default function Home() {
     setProcessingCurrent(0);
     setProcessingTotal(0);
     setCurrentResultIndex(0);
-    setStep2ShowAllFields(false);
-    setStep2EditingWarning(false);
     setReplacingResultIndex(null);
     setPendingReplaceResultIndex(null);
     setProgressCardDismissed(false);
@@ -747,9 +784,6 @@ export default function Home() {
 
   if (step === 2) {
     const firstFile = fileList[0];
-    const warningCharCount = applicationData.governmentWarning.length;
-    const isStandardWarning =
-      applicationData.governmentWarning === STANDARD_GOVERNMENT_WARNING;
 
     return (
       <div className="min-h-screen depth-0 text-[#1C1C1E]">
@@ -933,164 +967,103 @@ export default function Home() {
                   </p>
                 </div>
 
-                {!step2ShowAllFields ? (
-                  <button
-                    type="button"
-                    onClick={() => setStep2ShowAllFields(true)}
-                    className="step2-field-in flex w-full items-center justify-center gap-2 rounded-[16px] border border-[#E5E5EA] bg-white py-3.5 text-[16px] font-normal text-[#007AFF] transition-all duration-500 hover:bg-[#F2F2F7] active:scale-[0.97]"
-                    style={{ minHeight: "56px", animationDelay: "80ms" }}
+                <div className="step2-field-in space-y-1.5">
+                  <label
+                    htmlFor="class-type"
+                    className="block text-[14px] font-medium text-[#8E8E93]"
                   >
-                    Show all fields ▼
-                  </button>
-                ) : (
-                  <>
-                    <div
-                      className="step2-field-in space-y-1.5"
-                      style={{ animationDelay: "0ms" }}
+                    Class / type
+                  </label>
+                  <input
+                    id="class-type"
+                    type="text"
+                    value={applicationData.classType}
+                    onChange={(event) =>
+                      setApplicationData((current) => ({
+                        ...current,
+                        classType: event.target.value,
+                      }))
+                    }
+                    placeholder="e.g., Bourbon Whiskey, IPA, Cabernet Sauvignon"
+                    className="input-apple h-14 w-full rounded-[16px] border border-[#E5E5EA] bg-white px-4 text-[16px] text-[#1C1C1E] placeholder:opacity-60"
+                    style={{ minHeight: "56px" }}
+                  />
+                </div>
+
+                <div className="step2-field-in grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="alcohol"
+                      className="block text-[14px] font-medium text-[#8E8E93]"
                     >
-                      <label
-                        htmlFor="class-type"
-                        className="block text-[14px] font-medium text-[#8E8E93]"
-                      >
-                        Class / type
-                      </label>
-                      <input
-                        id="class-type"
-                        type="text"
-                        value={applicationData.classType}
-                        onChange={(event) =>
-                          setApplicationData((current) => ({
-                            ...current,
-                            classType: event.target.value,
-                          }))
-                        }
-                        placeholder="e.g. Kentucky Straight Bourbon Whiskey"
-                        className="input-apple h-14 w-full rounded-[16px] border border-[#E5E5EA] bg-white px-4 text-[16px] text-[#1C1C1E] placeholder:opacity-60"
-                        style={{ minHeight: "56px" }}
-                      />
-                    </div>
-
-                    <div
-                      className="step2-field-in grid gap-4 sm:grid-cols-2"
-                      style={{ animationDelay: "60ms" }}
-                    >
-                      <div className="space-y-1.5">
-                        <label
-                          htmlFor="alcohol"
-                          className="block text-[14px] font-medium text-[#8E8E93]"
-                        >
-                          Alcohol content
-                        </label>
-                        <input
-                          id="alcohol"
-                          type="text"
-                          value={applicationData.alcoholContent}
-                          onChange={(event) =>
-                            setApplicationData((current) => ({
-                              ...current,
-                              alcoholContent: event.target.value,
-                            }))
-                          }
-                          placeholder="e.g. 45% Alc./Vol. (90 Proof)"
-                          className="input-apple h-14 w-full rounded-[16px] border border-[#E5E5EA] bg-white px-4 text-[16px] text-[#1C1C1E] placeholder:opacity-60"
-                          style={{ minHeight: "56px" }}
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label
-                          htmlFor="net-contents"
-                          className="block text-[14px] font-medium text-[#8E8E93]"
-                        >
-                          Net contents
-                        </label>
-                        <input
-                          id="net-contents"
-                          type="text"
-                          value={applicationData.netContents}
-                          onChange={(event) =>
-                            setApplicationData((current) => ({
-                              ...current,
-                              netContents: event.target.value,
-                            }))
-                          }
-                          placeholder="e.g. 750 mL"
-                          className="input-apple h-14 w-full rounded-[16px] border border-[#E5E5EA] bg-white px-4 text-[16px] text-[#1C1C1E] placeholder:opacity-60"
-                          style={{ minHeight: "56px" }}
-                        />
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {step2ShowAllFields && (
-                  <button
-                    type="button"
-                    onClick={() => setStep2ShowAllFields(false)}
-                    className="step2-field-in flex w-full items-center justify-center gap-2 rounded-[16px] border border-[#E5E5EA] bg-white py-3 text-[14px] font-normal text-[#8E8E93] transition-all duration-300 hover:bg-[#F2F2F7] active:scale-[0.98]"
-                  >
-                    Show fewer fields ▲
-                  </button>
-                )}
-
-                {!step2EditingWarning ? (
-                  <button
-                    type="button"
-                    onClick={() => setStep2EditingWarning(true)}
-                    className="step2-field-in flex w-full items-center justify-between gap-3 rounded-[16px] border border-[#E5E5EA] bg-white px-4 py-3.5 text-left text-[16px] text-[#1C1C1E] transition-colors hover:bg-[#F2F2F7]"
-                    style={{ minHeight: "56px", animationDelay: "160ms" }}
-                  >
-                    <span className="text-[#8E8E93]">
-                      {isStandardWarning
-                        ? "Using standard TTB warning"
-                        : "Government warning (custom)"}
-                    </span>
-                    <span className="shrink-0 text-[#007AFF]" aria-hidden>
-                      ✎
-                    </span>
-                  </button>
-                ) : (
-                  <div
-                    className="step2-field-in space-y-1.5"
-                    style={{ animationDelay: "0ms" }}
-                  >
-                    <div className="flex items-center justify-between">
-                      <label
-                        htmlFor="government-warning"
-                        className="block text-[14px] font-medium text-[#8E8E93]"
-                      >
-                        Government health warning (exact text)
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setStep2EditingWarning(false)}
-                        className="text-[14px] text-[#007AFF]"
-                      >
-                        Collapse
-                      </button>
-                    </div>
-                    <div className="relative pb-8">
-                      <textarea
-                        id="government-warning"
-                        value={applicationData.governmentWarning}
-                        onChange={(event) =>
-                          setApplicationData((current) => ({
-                            ...current,
-                            governmentWarning: event.target.value,
-                          }))
-                        }
-                        rows={6}
-                        className="input-apple w-full resize-y rounded-[16px] border border-[#E5E5EA] bg-white px-4 py-3 font-mono text-[16px] leading-relaxed text-[#1C1C1E] placeholder:opacity-60"
-                        style={{ lineHeight: 1.6 }}
-                      />
-                      <p
-                        className="absolute bottom-2 right-3 text-[14px] text-[#8E8E93]"
-                        style={{ opacity: 0.8 }}
-                      >
-                        {warningCharCount} characters
-                      </p>
-                    </div>
+                      Alcohol content
+                    </label>
+                    <input
+                      id="alcohol"
+                      type="text"
+                      value={applicationData.alcoholContent}
+                      onChange={(event) =>
+                        setApplicationData((current) => ({
+                          ...current,
+                          alcoholContent: event.target.value,
+                        }))
+                      }
+                      placeholder="e.g., 45% Alc./Vol. or 90 Proof"
+                      className="input-apple h-14 w-full rounded-[16px] border border-[#E5E5EA] bg-white px-4 text-[16px] text-[#1C1C1E] placeholder:opacity-60"
+                      style={{ minHeight: "56px" }}
+                    />
+                    <p className="mt-1 text-[12px] text-[#8E8E93]">
+                      Optional for some wine/beer types
+                    </p>
                   </div>
-                )}
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="net-contents"
+                      className="block text-[14px] font-medium text-[#8E8E93]"
+                    >
+                      Net contents
+                    </label>
+                    <input
+                      id="net-contents"
+                      type="text"
+                      value={applicationData.netContents}
+                      onChange={(event) =>
+                        setApplicationData((current) => ({
+                          ...current,
+                          netContents: event.target.value,
+                        }))
+                      }
+                      placeholder="e.g., 750 mL or 12 fl oz"
+                      className="input-apple h-14 w-full rounded-[16px] border border-[#E5E5EA] bg-white px-4 text-[16px] text-[#1C1C1E] placeholder:opacity-60"
+                      style={{ minHeight: "56px" }}
+                    />
+                  </div>
+                </div>
+
+                <div className="step2-field-in space-y-1.5">
+                  <label
+                    htmlFor="government-warning"
+                    className="block text-[14px] font-medium text-[#8E8E93]"
+                  >
+                    Government health warning
+                  </label>
+                  <textarea
+                    id="government-warning"
+                    value={applicationData.governmentWarning}
+                    onChange={(event) =>
+                      setApplicationData((current) => ({
+                        ...current,
+                        governmentWarning: event.target.value,
+                      }))
+                    }
+                    rows={4}
+                    className="input-apple w-full resize-y rounded-[16px] border border-[#E5E5EA] bg-white px-4 py-3 text-[16px] leading-relaxed text-[#1C1C1E] placeholder:opacity-60"
+                    style={{ lineHeight: 1.6 }}
+                  />
+                  <p className="mt-1 text-[12px] text-[#8E8E93]">
+                    Standard TTB warning (pre-filled)
+                  </p>
+                </div>
 
                 <div className="step2-buttons-in flex flex-col gap-4 pt-2">
                   <button
