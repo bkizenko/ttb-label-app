@@ -42,75 +42,190 @@ const extractFromOcrText = (text: string): ExtractedLabelData => {
     .replace(/\s+/g, " ")
     .trim();
 
-  const lines = text
-    .split(/\r?\n/)
-    .map((l) => l.replace(/\|/g, " ").trim())
-    .filter(Boolean);
-
-  const brandLines = lines
-    .slice(0, 4)
-    .filter(
-      (line) =>
-        line.length > 2 &&
-        !/^[:\-—_\s]+$/.test(line) &&
-        !/(government|warning|alc|proof|vol|ml|oz)/i.test(line),
-    );
-  const candidateBrandLine = brandLines
-    .slice(0, 2)
-    .join(" ")
+  const singleLine = text
+    .replace(/[\r\n|]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 
-  const classTypeRegex =
-    /(Kentucky\s+Straight\s+(?:Bourbon\s+)?Whiskey|Straight\s+Bourbon|Bourbon\s+Whiskey|Rye\s+Whiskey|Single\s+Malt|Blended\s+Whiskey|Tennessee\s+Whiskey|Scotch|Irish\s+Whiskey|Whiskey|Whisky|Vodka|Gin|Rum|Tequila|Mezcal|IPA|Pale\s+Ale|Lager|Stout|Porter|Pilsner|Ale|Beer|Red\s+Wine|White\s+Wine|Rosé|Cabernet|Merlot|Chardonnay|Pinot\s+Noir|Sauvignon\s+Blanc|Wine)/i;
-  const classTypeMatch = cleanText.match(classTypeRegex);
+  const allCaps = text.toUpperCase();
 
-  let alcoholContent: string | undefined;
-  const proofMatch = cleanText.match(/([0-9]{2,3})\s*Proof/i);
-  if (proofMatch) {
-    const proofNum = proofMatch[1];
-    const abv = (parseInt(proofNum, 10) / 2).toFixed(1);
-    alcoholContent = `${abv}% Alc./Vol. (${proofNum} Proof)`;
-  } else {
-    const percentMatch = cleanText.match(
-      /(?:BE|B5|4S|45|40|[0-9]{1,2}(?:\.[0-9])?)\.?\s*%\s*(?:Alc\.?\/Vol\.?|ABV)?/i,
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.replace(/\|/g, " ").trim())
+    .filter(
+      (l) =>
+        l.length > 2 &&
+        !/^[:\-—_\s|]+$/.test(l) &&
+        !/(government|warning|surgeon|pregnancy|according)/i.test(l),
     );
-    if (percentMatch) {
-      let percent = percentMatch[0];
-      percent = percent.replace(/BE/i, "45");
-      percent = percent.replace(/B5/i, "85");
-      percent = percent.replace(/4S/i, "45");
-      percent = percent.replace(/O/g, "0");
-      const numMatch = percent.match(/([0-9]{1,2}(?:\.[0-9])?)/);
-      if (numMatch) {
-        alcoholContent = `${numMatch[1]}% Alc./Vol.`;
-      }
+
+  const brandLines = lines
+    .slice(0, 3)
+    .filter(
+      (l) =>
+        !/(whiskey|bourbon|vodka|gin|rum|tequila|ipa|lager|wine|proof|alc|vol|ml|oz)/i.test(
+          l,
+        ),
+    );
+
+  const brandName =
+    brandLines
+      .slice(0, 2)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim() || undefined;
+
+  const typeKeywords = [
+    "Kentucky Straight Bourbon Whiskey",
+    "Straight Bourbon Whiskey",
+    "Bourbon Whiskey",
+    "Kentucky Bourbon",
+    "Rye Whiskey",
+    "Tennessee Whiskey",
+    "Single Malt",
+    "Blended Whiskey",
+    "Scotch Whisky",
+    "Irish Whiskey",
+    "Whiskey",
+    "Whisky",
+    "Vodka",
+    "Gin",
+    "Rum",
+    "Tequila",
+    "Mezcal",
+    "India Pale Ale",
+    "IPA",
+    "Pale Ale",
+    "Amber Ale",
+    "Lager",
+    "Pilsner",
+    "Stout",
+    "Porter",
+    "Red Wine",
+    "White Wine",
+    "Rosé Wine",
+    "Cabernet Sauvignon",
+    "Merlot",
+    "Pinot Noir",
+    "Chardonnay",
+    "Sauvignon Blanc",
+    "Wine",
+    "Beer",
+    "Ale",
+  ];
+
+  let classType: string | undefined;
+
+  for (const keyword of typeKeywords) {
+    const regex = new RegExp(keyword.replace(/\s+/g, "\\s*"), "i");
+    if (regex.test(singleLine)) {
+      classType = keyword;
+      break;
     }
   }
 
-  const netRegex =
-    /([0-9]+(?:\.[0-9]+)?)\s*(mL|ML|ml|L|l|FL\s*OZ|fl\.?\s*oz|OZ|oz|liter|litre)/i;
-  const netMatch = cleanText.match(netRegex);
-
-  const warningIndex = cleanText.toUpperCase().indexOf("GOVERNMENT WARNING");
-  let warningText: string | undefined;
-  if (warningIndex >= 0) {
-    warningText = cleanText
-      .slice(warningIndex, warningIndex + 400)
-      .trim();
+  if (!classType) {
+    const typeWords = [
+      "kentucky",
+      "straight",
+      "bourbon",
+      "whiskey",
+      "vodka",
+      "gin",
+      "rum",
+      "ipa",
+      "lager",
+      "stout",
+      "wine",
+    ];
+    const foundWords = typeWords.filter((word) =>
+      new RegExp(word, "i").test(singleLine),
+    );
+    if (foundWords.length > 0) {
+      classType = foundWords
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ");
+    }
   }
 
-  const hasExactHeader = /GOVERNMENT WARNING:/i.test(text);
+  let alcoholContent: string | undefined;
+
+  const proofMatch = singleLine.match(/(\d{2,3})\s*Proof/i);
+  if (proofMatch) {
+    const proof = parseInt(proofMatch[1], 10);
+    const abv = (proof / 2).toFixed(1).replace(".0", "");
+    alcoholContent = `${abv}% Alc./Vol. (${proof} Proof)`;
+  } else {
+    let percentText = singleLine;
+    percentText = percentText.replace(/BE\s*(\d)/gi, "4$1");
+    percentText = percentText.replace(/B5/gi, "85");
+    percentText = percentText.replace(/4S/gi, "45");
+    percentText = percentText.replace(/O(?=\d)/gi, "0");
+
+    const percentMatch = percentText.match(/(\d{1,2}(?:\.\d)?)\s*%/);
+    if (percentMatch) {
+      alcoholContent = `${percentMatch[1]}% Alc./Vol.`;
+    }
+  }
+
+  const netMatch = singleLine.match(
+    /(\d+(?:\.\d+)?)\s*(mL|ML|ml|L|l|FL\s*OZ|fl\.?\s*oz|OZ|oz)/i,
+  );
+  const netContents = netMatch
+    ? `${netMatch[1]} ${netMatch[2]}`
+    : undefined;
+
+  const warningIndex = allCaps.indexOf("GOVERNMENT WARNING");
+  const warningText =
+    warningIndex >= 0
+      ? text
+          .slice(warningIndex, warningIndex + 400)
+          .replace(/\s+/g, " ")
+          .trim()
+      : undefined;
+
+  const hasExactHeader = /GOVERNMENT WARNING[.:]/i.test(text);
 
   return {
-    brandName: candidateBrandLine || undefined,
-    classType: classTypeMatch ? classTypeMatch[1].trim() : undefined,
+    brandName,
+    classType,
     alcoholContent,
-    netContents: netMatch ? `${netMatch[1]} ${netMatch[2]}` : undefined,
+    netContents,
     governmentWarningText: warningText,
     hasGovernmentWarningHeaderExact: hasExactHeader,
   };
 };
+
+async function preprocessImageForOCR(file: File | Blob): Promise<Blob> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d")!;
+
+      const scale = 2;
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+
+      ctx.scale(scale, scale);
+      ctx.filter = "contrast(1.5) brightness(1.1) saturate(0)";
+      ctx.drawImage(img, 0, 0);
+
+      canvas.toBlob(
+        (blob) => {
+          resolve(blob!);
+          URL.revokeObjectURL(url);
+        },
+        "image/png",
+        1.0,
+      );
+    };
+
+    img.src = url;
+  });
+}
 
 function ThumbnailCard({
   file,
@@ -207,7 +322,6 @@ export default function Home() {
   const [catastrophicError, setCatastrophicError] = useState<string | null>(
     null,
   );
-  const [browserBannerDismissed, setBrowserBannerDismissed] = useState(false);
   const [reviewMode, setReviewMode] = useState<
     "summary" | "reviewing" | "complete"
   >("summary");
@@ -335,7 +449,8 @@ export default function Home() {
           setProgressMessage(`Reading label ${index + 1} of ${files.length}...`);
 
           try {
-            const { data } = await worker.recognize(file);
+            const preprocessed = await preprocessImageForOCR(file);
+            const { data } = await worker.recognize(preprocessed);
             const ocrText = data.text ?? "";
             console.log("RAW OCR TEXT:", ocrText);
             const extracted = extractFromOcrText(ocrText);
@@ -399,7 +514,8 @@ export default function Home() {
       const worker = await createWorker("eng");
       try {
         const start = performance.now();
-        const { data } = await worker.recognize(file);
+        const preprocessed = await preprocessImageForOCR(file);
+        const { data } = await worker.recognize(preprocessed);
         const ocrText = data.text ?? "";
         console.log("RAW OCR TEXT:", ocrText);
         const extracted = extractFromOcrText(ocrText);
@@ -621,14 +737,7 @@ export default function Home() {
             </div>
           </div>
         ) : null}
-        {!browserBannerDismissed ? (
-          <div className="fixed left-0 right-0 top-0 z-[99] flex items-center gap-3 bg-[#FFF9E5] px-4 py-3 text-[14px] text-[#1C1C1E]" style={{ borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
-            <span className="shrink-0 text-[#007AFF]" aria-hidden>ℹ</span>
-            <p className="min-w-0 flex-1">For best results, use Safari, Chrome, or Edge. Some features may not work in this browser.</p>
-            <button type="button" onClick={() => setBrowserBannerDismissed(true)} aria-label="Dismiss browser notice" className="shrink-0 rounded p-1 text-[#8E8E93] hover:bg-black/5 hover:text-[#1C1C1E]">×</button>
-          </div>
-        ) : null}
-      <div className="min-h-screen depth-0 text-[#1C1C1E]">
+        <div className="min-h-screen depth-0 text-[#1C1C1E]">
         <div className="mx-auto flex max-w-xl flex-col gap-10 px-4 py-10 sm:py-12">
           <header className="space-y-2">
             {renderProgress()}
@@ -838,28 +947,6 @@ export default function Home() {
                 </div>
               </div>
             </div>
-          </div>
-        ) : null}
-        {!browserBannerDismissed ? (
-          <div
-            className="fixed left-0 right-0 top-0 z-[99] flex items-center gap-3 bg-[#FFF9E5] px-4 py-3 text-[14px] text-[#1C1C1E]"
-            style={{ borderBottom: "1px solid rgba(0,0,0,0.06)" }}
-          >
-            <span className="shrink-0 text-[#007AFF]" aria-hidden>
-              ℹ
-            </span>
-            <p className="min-w-0 flex-1">
-              For best results, use Safari, Chrome, or Edge. Some features may
-              not work in this browser.
-            </p>
-            <button
-              type="button"
-              onClick={() => setBrowserBannerDismissed(true)}
-              aria-label="Dismiss browser notice"
-              className="shrink-0 rounded p-1 text-[#8E8E93] hover:bg-black/5 hover:text-[#1C1C1E]"
-            >
-              ×
-            </button>
           </div>
         ) : null}
         <div className="mx-auto flex max-w-xl flex-col gap-10 px-4 py-10 sm:py-12">
@@ -1244,13 +1331,6 @@ export default function Home() {
                 </div>
               </div>
             </div>
-          </div>
-        ) : null}
-        {!browserBannerDismissed ? (
-          <div className="fixed left-0 right-0 top-0 z-[99] flex items-center gap-3 bg-[#FFF9E5] px-4 py-3 text-[14px] text-[#1C1C1E]" style={{ borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
-            <span className="shrink-0 text-[#007AFF]" aria-hidden>ℹ</span>
-            <p className="min-w-0 flex-1">For best results, use Safari, Chrome, or Edge. Some features may not work in this browser.</p>
-            <button type="button" onClick={() => setBrowserBannerDismissed(true)} aria-label="Dismiss browser notice" className="shrink-0 rounded p-1 text-[#8E8E93] hover:bg-black/5 hover:text-[#1C1C1E]">×</button>
           </div>
         ) : null}
         {/* Progress follows to Step 3 when user skipped to results (batch) */}

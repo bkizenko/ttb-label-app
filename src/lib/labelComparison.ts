@@ -90,6 +90,25 @@ const normalizeWhitespace = (value: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
+function isSubstringMatch(
+  expected: string,
+  actual: string,
+): { match: boolean; pct: number } {
+  const normExp = normalizeForComparison(expected);
+  const normAct = normalizeForComparison(actual);
+  if (!normExp || !normAct) return { match: false, pct: 0 };
+
+  const expWords = normExp.split(" ");
+  const actWords = normAct.split(" ");
+  const matchedWords = actWords.filter((w) => expWords.includes(w));
+  const pct = Math.round((matchedWords.length / expWords.length) * 100);
+
+  const isPrefix =
+    normExp.startsWith(normAct) || normAct.startsWith(normExp);
+
+  return { match: isPrefix || pct >= 40, pct };
+}
+
 function pushFuzzyCheck(
   checks: FieldCheck[],
   field: keyof ApplicationLabelData,
@@ -139,37 +158,71 @@ export const compareLabelData = (
 ): FieldCheck[] => {
   const checks: FieldCheck[] = [];
 
-  // Brand and class: fuzzy only
-  const textOnlyFields: {
-    field: keyof ApplicationLabelData;
-    key: keyof ExtractedLabelData;
-    threshold: number;
-  }[] = [
-    { field: "brandName", key: "brandName", threshold: 85 },
-    { field: "classType", key: "classType", threshold: 85 },
-  ];
-
-  for (const { field, key, threshold } of textOnlyFields) {
-    const expectedRaw = application[field];
-    const actualRaw = extracted[key as keyof ExtractedLabelData];
+  // Brand name: fuzzy only
+  {
+    const expectedRaw = application.brandName;
+    const actualRaw = extracted.brandName;
     const expected =
       typeof expectedRaw === "string" ? normalizeWhitespace(expectedRaw) : "";
     const actual =
-      typeof actualRaw === "string"
-        ? normalizeWhitespace(actualRaw)
-        : "";
+      typeof actualRaw === "string" ? normalizeWhitespace(actualRaw) : "";
 
     if (!actualRaw || actual === "") {
       checks.push({
-        field,
+        field: "brandName",
         status: "missing",
         expected: expectedRaw,
         notes: "Not clearly found on label",
       });
-      continue;
+    } else {
+      pushFuzzyCheck(checks, "brandName", expected, actual, 85);
     }
+  }
 
-    pushFuzzyCheck(checks, field, expected, actual, threshold);
+  // Class/type: fuzzy + substring/prefix fallback for partial OCR reads
+  {
+    const expectedRaw = application.classType;
+    const actualRaw = extracted.classType;
+    const expected =
+      typeof expectedRaw === "string" ? normalizeWhitespace(expectedRaw) : "";
+    const actual =
+      typeof actualRaw === "string" ? normalizeWhitespace(actualRaw) : "";
+
+    if (!actualRaw || actual === "") {
+      checks.push({
+        field: "classType",
+        status: "missing",
+        expected: expectedRaw,
+        notes: "Not clearly found on label",
+      });
+    } else {
+      const similarity = similarityScore(expected, actual);
+      if (similarity >= 85) {
+        checks.push({
+          field: "classType",
+          status: "match",
+          expected,
+          actual,
+          notes:
+            similarity === 100
+              ? undefined
+              : `${similarity}% match - minor formatting difference. Use your judgment.`,
+        });
+      } else {
+        const sub = isSubstringMatch(expected, actual);
+        if (sub.match) {
+          checks.push({
+            field: "classType",
+            status: "match",
+            expected,
+            actual,
+            notes: `Partial OCR read (${sub.pct}% of words matched). Use your judgment.`,
+          });
+        } else {
+          pushFuzzyCheck(checks, "classType", expected, actual, 85);
+        }
+      }
+    }
   }
 
   // Numeric fields: try numeric normalization first, then fuzzy fallback

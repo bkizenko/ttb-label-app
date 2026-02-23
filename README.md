@@ -137,6 +137,17 @@ For the best experience during this prototype:
   - Move OCR + parsing into an internal API (e.g. .NET or Node microservice) running on Azure within the FedRAMP boundary.
   - Swap in a more accurate OCR/vision model that can handle more challenging photography conditions.
 
+## Known Limitations
+
+**OCR Accuracy**: Browser-based Tesseract struggles with decorative fonts and styled text.
+When OCR returns partial matches (e.g., "Kentucky Straight" instead of "Kentucky Straight
+Bourbon Whiskey"), the system uses substring matching to flag these for agent review rather
+than rejecting them outright. This matches the real-world workflow where agents use judgment
+for minor discrepancies.
+
+**Future Enhancement**: Production deployment could use Google Cloud Vision or AWS Textract
+for improved accuracy on styled labels.
+
 ### Next steps if this were extended
 
 - Tighten field extraction with layout-aware OCR or a lightweight vision model.
