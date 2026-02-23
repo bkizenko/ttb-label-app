@@ -22,5 +22,245 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "SF Pro Display", -apple-system-font, "Segoe UI", sans-serif;
+}
+
+@keyframes fade-scale-in {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.92);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-fade-scale-in {
+  animation-name: fade-scale-in;
+  animation-duration: 0.4s;
+  animation-timing-function: ease-out;
+  animation-fill-mode: both;
+}
+
+@keyframes progress-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.15);
+  }
+}
+
+.progress-dot-active {
+  animation: progress-dot-pulse 2s ease-in-out infinite;
+}
+
+/* Step 1 – Apple setup entrance */
+@keyframes step1-header-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.88);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes step1-upload-zone-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes step1-progress-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes step1-thumb-in {
+  0% {
+    opacity: 0;
+    transform: translateY(20px) scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes upload-zone-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.015);
+  }
+}
+
+@keyframes checkmark-draw {
+  0% {
+    stroke-dashoffset: 24;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+.step1-header-in {
+  animation: step1-header-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.step1-upload-zone-in {
+  animation: step1-upload-zone-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.step1-progress-in {
+  animation: step1-progress-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s both;
+}
+
+.step1-thumb-in {
+  animation: step1-thumb-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.upload-zone-pulse {
+  animation: upload-zone-pulse 2s ease-in-out infinite;
+}
+
+/* Step 2 – Apple ID form */
+@keyframes step2-header-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes step2-preview-in {
+  0% {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes step2-field-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes step2-buttons-in {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes field-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-2px); }
+  80% { transform: translateX(2px); }
+}
+
+@keyframes checkmark-bounce {
+  0% { transform: scale(0); opacity: 0; }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.step2-header-in {
+  animation: step2-header-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.step2-preview-in {
+  animation: step2-preview-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.step2-field-in {
+  animation: step2-field-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.step2-buttons-in {
+  animation: step2-buttons-in 0.3s ease-out 0.3s both;
+}
+
+.field-shake {
+  animation: field-shake 0.35s ease-in-out;
+}
+
+.field-checkmark-in {
+  animation: checkmark-bounce 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Apple-style focus ring */
+.input-apple {
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.2s ease;
+}
+.input-apple:focus {
+  border-color: #007AFF;
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.15);
+  transform: scale(1.015);
+  outline: none;
+}
+.input-apple::placeholder {
+  opacity: 0.6;
+}
+
+/* Step 3 – Results screen */
+@keyframes step3-hero-icon-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes step3-field-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+
+.step3-hero-icon {
+  animation: step3-hero-icon-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.step3-field-pulse-once {
+  animation: step3-field-pulse 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.4s 1
+    both;
 }

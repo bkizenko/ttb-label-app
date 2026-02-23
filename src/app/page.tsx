@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createWorker } from "tesseract.js";
 import {
   STANDARD_GOVERNMENT_WARNING,
@@ -66,6 +66,80 @@ const extractFromOcrText = (text: string): ExtractedLabelData => {
   };
 };
 
+function ThumbnailCard({
+  file,
+  onRemove,
+  style,
+}: {
+  file: File;
+  onRemove: () => void;
+  style?: React.CSSProperties;
+}) {
+  const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const objectUrl = URL.createObjectURL(file);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+
+  const sizeMB = file.size / (1024 * 1024);
+  const sizeStr =
+    sizeMB >= 1
+      ? `${sizeMB.toFixed(1)} MB`
+      : `${(file.size / 1024).toFixed(1)} KB`;
+  const dimsStr = dims ? `${dims.w}×${dims.h}` : "";
+
+  return (
+    <figure
+      className="step1-thumb-in group relative flex flex-col gap-2 rounded-[16px] border border-gray-200 bg-white p-2 transition-all duration-300 ease-out hover:scale-[1.04] hover:border-gray-300 hover:shadow-lg"
+      style={{
+        ...style,
+        boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+      }}
+    >
+      <button
+        type="button"
+        aria-label={`Remove ${file.name}`}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onRemove();
+        }}
+        className="absolute right-2 top-2 z-10 inline-flex h-9 w-9 items-center justify-center bg-transparent"
+      >
+        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/95 text-[14px] font-semibold leading-none text-[#1C1C1E] shadow-sm ring-1 ring-black/10 transition-transform duration-150 hover:scale-[1.02]">
+          ×
+        </span>
+      </button>
+
+      <div className="overflow-hidden rounded-[12px]">
+        {url ? (
+          <img
+            src={url}
+            alt={file.name}
+            className="h-[140px] w-full rounded-[12px] bg-[#FAFBFC] object-contain transition-transform duration-300 ease-out group-hover:scale-110"
+            onLoad={(e) => {
+              const img = e.currentTarget;
+              setDims({ w: img.naturalWidth, h: img.naturalHeight });
+            }}
+          />
+        ) : (
+          <div className="h-[140px] w-full rounded-[12px] bg-[#FAFBFC]" />
+        )}
+      </div>
+      <figcaption className="truncate text-sm font-medium text-[#1C1C1E]">
+        {file.name}
+      </figcaption>
+      <p className="text-xs text-[#8E8E93]">
+        {sizeStr}
+        {dimsStr ? ` • ${dimsStr}` : ""}
+      </p>
+    </figure>
+  );
+}
+
 export default function Home() {
   const [mode, setMode] = useState<Mode>("single");
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -78,6 +152,9 @@ export default function Home() {
   const [results, setResults] = useState<VerificationResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [progressMessage, setProgressMessage] = useState<string | null>(null);
+  const [currentResultIndex, setCurrentResultIndex] = useState(0);
+  const [step2ShowAllFields, setStep2ShowAllFields] = useState(false);
+  const [step2EditingWarning, setStep2EditingWarning] = useState(false);
 
   const handleFilesSelected = (files: FileList | null) => {
     if (!files) return;
@@ -91,7 +168,7 @@ export default function Home() {
     }
 
     setFileList((current) => {
-      if (mode === "batch" && current.length) {
+      if (current.length) {
         const existingKeys = new Set(
           current.map((file) => `${file.name}-${file.lastModified}`),
         );
@@ -102,6 +179,11 @@ export default function Home() {
       }
       return newFiles;
     });
+    setResults([]);
+  };
+
+  const clearAllFiles = () => {
+    setFileList([]);
     setResults([]);
   };
 
@@ -211,13 +293,19 @@ export default function Home() {
     setResults([]);
     setError(null);
     setProgressMessage(null);
+    setCurrentResultIndex(0);
+    setStep2ShowAllFields(false);
+    setStep2EditingWarning(false);
   };
 
   const renderProgress = () => {
     const steps = [1, 2, 3] as const;
+    const isStep1 = step === 1;
     return (
-      <div className="mb-6 flex items-center gap-3">
-        <span className="text-sm font-medium text-slate-800">
+      <div
+        className={`mb-6 flex items-center gap-3 ${isStep1 ? "step1-progress-in" : ""}`}
+      >
+        <span className="text-sm font-semibold text-[#1C1C1E]">
           {step === 1 && "Step 1 of 3"}
           {step === 2 && "Step 2 of 3"}
           {step === 3 && "Step 3 of 3"}
@@ -226,13 +314,18 @@ export default function Home() {
           {steps.map((s) => (
             <span
               key={s}
-              className={`h-2.5 w-2.5 rounded-full ${
+              className={`rounded-full transition-all duration-300 ${
                 step === s
-                  ? "bg-blue-500"
+                  ? "progress-dot-active h-3.5 w-3.5 scale-125 bg-[#007AFF] sm:scale-[1.4]"
                   : step > s
-                    ? "bg-green-500"
-                    : "bg-slate-300"
+                    ? "h-3.5 w-3.5 bg-[#30D158]"
+                    : "h-3.5 w-3.5 bg-[#C7C7CC]"
               }`}
+              style={
+                step === s
+                  ? { boxShadow: "0 0 8px rgba(0, 122, 255, 0.5)" }
+                  : undefined
+              }
             />
           ))}
         </div>
@@ -242,131 +335,130 @@ export default function Home() {
 
   if (step === 1) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-[#F5F7FA] to-white text-slate-800">
-        <div className="mx-auto flex max-w-xl flex-col gap-8 px-4 py-10">
+      <div className="min-h-screen bg-[#F2F2F7] text-[#1C1C1E]">
+        <div className="mx-auto flex max-w-xl flex-col gap-8 px-4 py-10 sm:py-12">
           <header className="space-y-2">
             {renderProgress()}
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-100 text-2xl">
+            <div className="step1-header-in flex items-center gap-4">
+              <div
+                className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-2xl text-4xl"
+                style={{
+                  background: "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
+                  color: "white",
+                }}
+              >
                 📸
               </div>
               <div>
-                <h1 className="text-2xl font-semibold tracking-tight">
+                <h1 className="text-2xl font-semibold tracking-tight text-[#1C1C1E]">
                   Upload label image
                 </h1>
-                <p className="mt-1 text-sm text-slate-600">
-                  Add the label you want to check.
+                <p className="mt-1 text-base text-[#8E8E93]">
+                  Select one or more label images
                 </p>
               </div>
             </div>
           </header>
 
           {error ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-sm">
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-sm">
               {error}
             </div>
           ) : null}
 
           <main className="space-y-6">
-            <section className="space-y-4">
-              <fieldset className="space-y-3">
-                <legend className="text-sm font-medium text-slate-800">
-                  How many labels are you checking?
-                </legend>
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <label className="flex flex-1 cursor-pointer items-center justify-between rounded-xl border border-slate-300 bg-white px-4 py-4 text-base shadow-sm">
-                    <span>Single label</span>
-                    <input
-                      type="radio"
-                      name="batchMode"
-                      className="h-5 w-5"
-                      checked={mode === "single"}
-                      onChange={() => setMode("single")}
-                    />
-                  </label>
-                  <label className="flex flex-1 cursor-pointer items-center justify-between rounded-xl border border-slate-300 bg-white px-4 py-4 text-base shadow-sm">
-                    <span>Multiple labels</span>
-                    <input
-                      type="radio"
-                      name="batchMode"
-                      className="h-5 w-5"
-                      checked={mode === "batch"}
-                      onChange={() => setMode("batch")}
-                    />
-                  </label>
-                </div>
-              </fieldset>
-
-              <section className="rounded-2xl bg-white p-6 shadow-md ring-1 ring-slate-200">
-                <label className="flex min-h-[240px] cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 text-center text-base text-slate-700">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple={mode === "batch"}
-                    className="hidden"
-                    onChange={(event) => handleFilesSelected(event.target.files)}
-                  />
-                  <span className="text-lg font-semibold text-slate-900">
-                    {mode === "batch"
-                      ? "Upload multiple label images"
-                      : "Upload a label image"}
-                  </span>
-                  <span className="mt-2 text-sm text-slate-600">
-                    Use clear, front-facing photos of each label.
-                  </span>
-                </label>
-
+            <section
+              className={`overflow-hidden rounded-[16px] bg-white p-8 shadow-[0_4px_12px_rgba(0,0,0,0.08)] ${fileList.length ? "upload-zone-pulse" : ""}`}
+            >
+              <label
+                className={`step1-upload-zone-in flex min-h-[400px] cursor-pointer flex-col items-center justify-center rounded-[16px] px-4 py-10 text-center transition-all duration-200 ease-out hover:scale-[1.02] ${
+                  fileList.length
+                    ? "border-2 border-[#30D158] border-solid bg-[#F0FDF4] hover:border-[#30D158]"
+                    : "border-[3px] border-dashed border-[#D1D5DB] bg-gradient-to-b from-white to-[#FAFBFC] hover:border-[#9CA3AF]"
+                }`}
+              >
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(event) => handleFilesSelected(event.target.files)}
+                />
                 {fileList.length ? (
-                  <div className="mt-4 space-y-3">
-                    <p className="text-sm font-medium text-slate-800">
-                      {fileList.length === 1
-                        ? "1 label selected"
-                        : `${fileList.length} labels selected`}
-                    </p>
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                      {fileList.map((file) => (
-                        <figure
-                          key={file.name + file.lastModified}
-                          className="relative flex flex-col gap-2 rounded-xl border border-gray-200 bg-gray-50 p-2 shadow-sm"
-                        >
-                          <button
-                            type="button"
-                            aria-label={`Remove ${file.name}`}
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              removeSelectedFile(
-                                `${file.name}-${file.lastModified}`,
-                              );
-                            }}
-                            className="absolute right-2 top-2 inline-flex h-11 w-11 items-center justify-center bg-transparent"
-                          >
-                            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-200/90 text-[16px] font-semibold leading-none text-slate-700 shadow-sm ring-1 ring-slate-300 transition-transform duration-150 hover:scale-[1.02]">
-                              ×
-                            </span>
-                          </button>
-                          <img
-                            src={URL.createObjectURL(file)}
-                            alt={file.name}
-                            className="h-24 w-full rounded-lg object-contain"
-                          />
-                          <figcaption className="truncate text-xs text-slate-700">
-                            {file.name}
-                          </figcaption>
-                        </figure>
-                      ))}
-                    </div>
+                  <span className="mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-[#30D158]/20 text-2xl text-[#30D158]">
+                    ✓
+                  </span>
+                ) : (
+                  <span
+                    className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl text-5xl"
+                    style={{
+                      background:
+                        "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
+                      color: "white",
+                    }}
+                  >
+                    📸
+                  </span>
+                )}
+                <span className="text-[22px] font-semibold text-[#1C1C1E]">
+                  {fileList.length
+                    ? `${fileList.length} label${fileList.length > 1 ? "s" : ""} selected`
+                    : "Select label images"}
+                </span>
+                <span
+                  className="mt-2 text-base text-[#8E8E93]"
+                  style={{ opacity: 0.6 }}
+                >
+                  {fileList.length
+                    ? "Tap the area again to add more"
+                    : "Tap to choose from your files"}
+                </span>
+              </label>
+
+              {fileList.length ? (
+                <div className="mt-6 space-y-4">
+                  <p className="text-base font-semibold text-[#1C1C1E]">
+                    {fileList.length === 1
+                      ? "1 label selected"
+                      : `${fileList.length} labels selected`}
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {fileList.map((file, index) => (
+                      <ThumbnailCard
+                        key={`${file.name}-${file.lastModified}`}
+                        file={file}
+                        onRemove={() =>
+                          removeSelectedFile(
+                            `${file.name}-${file.lastModified}`,
+                          )
+                        }
+                        style={{ animationDelay: `${index * 60}ms` }}
+                      />
+                    ))}
                   </div>
-                ) : null}
-              </section>
+                  <button
+                    type="button"
+                    onClick={clearAllFiles}
+                    className="flex items-center gap-2 rounded-[12px] border border-[#FF3B30]/30 bg-white px-4 py-2.5 text-sm font-semibold text-[#FF3B30] shadow-sm transition-transform duration-150 hover:scale-[0.97] hover:bg-red-50"
+                  >
+                    <span aria-hidden>🗑</span>
+                    Clear all
+                  </button>
+                </div>
+              ) : null}
             </section>
 
-            <div className="flex justify-end">
+            <div className="w-full sm:flex sm:justify-end">
               <button
                 type="button"
                 disabled={!fileList.length}
                 onClick={() => setStep(2)}
-                className="inline-flex min-h-[60px] items-center justify-center rounded-lg bg-[#007AFF] px-6 py-4 text-base font-semibold text-white shadow-md transition-transform duration-150 hover:scale-[1.02] hover:bg-[#0066D6] disabled:cursor-not-allowed disabled:bg-slate-400 disabled:hover:scale-100"
+                className="w-full min-h-[56px] rounded-[12px] px-6 py-4 text-[18px] font-semibold text-white shadow-lg transition-all duration-300 ease-out hover:scale-[1.03] hover:shadow-xl disabled:scale-100 sm:w-auto disabled:opacity-50 disabled:grayscale active:scale-[0.97] disabled:hover:shadow-lg"
+                style={{
+                  background:
+                    "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
+                  boxShadow: "0 4px 16px rgba(0, 122, 255, 0.3)",
+                }}
               >
                 Next: Add application data
               </button>
@@ -379,21 +471,24 @@ export default function Home() {
 
   if (step === 2) {
     const firstFile = fileList[0];
+    const warningCharCount = applicationData.governmentWarning.length;
+    const isStandardWarning =
+      applicationData.governmentWarning === STANDARD_GOVERNMENT_WARNING;
 
     return (
-      <div className="min-h-screen bg-gradient-to-b from-[#F5F7FA] to-white text-slate-800">
-        <div className="mx-auto flex max-w-xl flex-col gap-8 px-4 py-10">
+      <div className="min-h-screen bg-[#F2F2F7] text-[#1C1C1E]">
+        <div className="mx-auto flex max-w-xl flex-col gap-8 px-4 py-10 sm:py-12">
           <header className="space-y-2">
             {renderProgress()}
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-100 text-2xl">
+            <div className="step2-header-in flex items-center gap-4">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#007AFF]/10 text-3xl">
                 📝
               </div>
               <div>
-                <h1 className="text-2xl font-semibold tracking-tight">
+                <h1 className="text-2xl font-semibold tracking-tight text-[#1C1C1E]">
                   Enter application data
                 </h1>
-                <p className="mt-1 text-sm text-slate-600">
+                <p className="mt-1 text-[17px] text-[#8E8E93]">
                   Confirm what the approved record says.
                 </p>
               </div>
@@ -401,140 +496,270 @@ export default function Home() {
           </header>
 
           {error ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-sm">
+            <div className="rounded-2xl border border-[#FF3B30]/30 bg-red-50 px-4 py-3 text-[17px] text-[#FF3B30] shadow-sm">
               {error}
             </div>
           ) : null}
 
           <main className="space-y-6">
             {firstFile ? (
-              <section className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-md ring-1 ring-slate-200">
+              <section
+                className="step2-preview-in flex h-[88px] items-center gap-4 rounded-[16px] bg-white px-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
+                style={{ minHeight: "88px" }}
+              >
                 <img
                   src={URL.createObjectURL(firstFile)}
-                  alt={firstFile.name}
-                  className="h-16 w-16 rounded-lg object-contain"
+                  alt=""
+                  className="h-[72px] w-[72px] shrink-0 rounded-[12px] bg-[#F2F2F7] object-contain"
                 />
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium text-slate-800">
-                    {mode === "batch"
-                      ? `${fileList.length} label images`
-                      : "Label image"}
-                  </span>
-                  <span className="text-xs text-slate-600">
-                    Data below will be used for all selected labels.
-                  </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[14px] font-normal text-[#8E8E93]">
+                    Label image ready
+                  </p>
+                  <p className="mt-0.5 truncate text-[13px] text-[#8E8E93]">
+                    {fileList.length > 1
+                      ? `${fileList.length} labels · same data for all`
+                      : firstFile.name}
+                  </p>
                 </div>
               </section>
             ) : null}
 
-            <section className="rounded-2xl bg-white p-6 shadow-md ring-1 ring-slate-200">
+            <section
+              className="overflow-hidden rounded-[16px] bg-white p-8 shadow-[0_2px_12px_rgba(0,0,0,0.06)]"
+              style={{ padding: "32px" }}
+            >
               <form
-                className="space-y-4 text-sm"
+                className="space-y-7"
                 onSubmit={(event) => {
                   event.preventDefault();
                   void handleRunWizard();
                 }}
               >
-                <div>
-                  <label className="block text-sm font-medium text-slate-800">
+                <p
+                  className="text-[13px] font-semibold uppercase tracking-wider text-[#8E8E93]"
+                  style={{ letterSpacing: "0.5px" }}
+                >
+                  Application record
+                </p>
+
+                <div
+                  className="step2-field-in"
+                  style={{ animationDelay: "0ms" }}
+                >
+                  <label
+                    htmlFor="brand-name"
+                    className="mb-1.5 block text-[13px] font-medium text-[#8E8E93]"
+                  >
                     Brand name
                   </label>
-                  <input
-                    type="text"
-                    value={applicationData.brandName}
-                    onChange={(event) =>
-                      setApplicationData((current) => ({
-                        ...current,
-                        brandName: event.target.value,
-                      }))
-                    }
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-base text-slate-900 shadow-sm focus:border-[#007AFF] focus:outline-none focus:ring-1 focus:ring-[#007AFF]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-800">
-                    Class / type
-                  </label>
-                  <input
-                    type="text"
-                    value={applicationData.classType}
-                    onChange={(event) =>
-                      setApplicationData((current) => ({
-                        ...current,
-                        classType: event.target.value,
-                      }))
-                    }
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-base text-slate-900 shadow-sm focus:border-[#007AFF] focus:outline-none focus:ring-1 focus:ring-[#007AFF]"
-                  />
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-800">
-                      Alcohol content
-                    </label>
+                  <div className="relative">
                     <input
+                      id="brand-name"
                       type="text"
-                      value={applicationData.alcoholContent}
+                      value={applicationData.brandName}
                       onChange={(event) =>
                         setApplicationData((current) => ({
                           ...current,
-                          alcoholContent: event.target.value,
+                          brandName: event.target.value,
                         }))
                       }
-                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-base text-slate-900 shadow-sm focus:border-[#007AFF] focus:outline-none focus:ring-1 focus:ring-[#007AFF]"
+                      placeholder="e.g. OLD TOM DISTILLERY"
+                      className="input-apple h-14 w-full rounded-[12px] border border-[#E5E5EA] bg-white px-4 text-[17px] text-[#1C1C1E] placeholder:opacity-60"
+                      style={{ minHeight: "56px" }}
                     />
+                    {applicationData.brandName.trim() ? (
+                      <span
+                        className="field-checkmark-in absolute right-3 top-1/2 -translate-y-1/2 text-[#30D158]"
+                        aria-hidden
+                      >
+                        ✓
+                      </span>
+                    ) : null}
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-800">
-                      Net contents
-                    </label>
-                    <input
-                      type="text"
-                      value={applicationData.netContents}
-                      onChange={(event) =>
-                        setApplicationData((current) => ({
-                          ...current,
-                          netContents: event.target.value,
-                        }))
-                      }
-                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-base text-slate-900 shadow-sm focus:border-[#007AFF] focus:outline-none focus:ring-1 focus:ring-[#007AFF]"
-                    />
-                  </div>
+                  <p className="mt-1 text-[13px] text-[#8E8E93]" style={{ opacity: 0.6 }}>
+                    Primary brand name on the approved application
+                  </p>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-slate-800">
-                    Government health warning (exact text)
-                  </label>
-                  <textarea
-                    value={applicationData.governmentWarning}
-                    onChange={(event) =>
-                      setApplicationData((current) => ({
-                        ...current,
-                        governmentWarning: event.target.value,
-                      }))
-                    }
-                    rows={4}
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-base text-slate-900 shadow-sm focus:border-[#007AFF] focus:outline-none focus:ring-1 focus:ring-[#007AFF]"
-                  />
-                </div>
+                {!step2ShowAllFields ? (
+                  <button
+                    type="button"
+                    onClick={() => setStep2ShowAllFields(true)}
+                    className="step2-field-in flex w-full items-center justify-center gap-2 rounded-[12px] border border-[#E5E5EA] bg-white py-3.5 text-[17px] font-normal text-[#007AFF] transition-colors hover:bg-[#F2F2F7]"
+                    style={{ minHeight: "56px", animationDelay: "80ms" }}
+                  >
+                    Show all fields
+                  </button>
+                ) : (
+                  <>
+                    <div
+                      className="step2-field-in space-y-1.5"
+                      style={{ animationDelay: "0ms" }}
+                    >
+                      <label
+                        htmlFor="class-type"
+                        className="block text-[13px] font-medium text-[#8E8E93]"
+                      >
+                        Class / type
+                      </label>
+                      <input
+                        id="class-type"
+                        type="text"
+                        value={applicationData.classType}
+                        onChange={(event) =>
+                          setApplicationData((current) => ({
+                            ...current,
+                            classType: event.target.value,
+                          }))
+                        }
+                        placeholder="e.g. Kentucky Straight Bourbon Whiskey"
+                        className="input-apple h-14 w-full rounded-[12px] border border-[#E5E5EA] bg-white px-4 text-[17px] text-[#1C1C1E] placeholder:opacity-60"
+                        style={{ minHeight: "56px" }}
+                      />
+                    </div>
 
-                <div className="flex justify-between gap-4 pt-2">
+                    <div
+                      className="step2-field-in grid gap-4 sm:grid-cols-2"
+                      style={{ animationDelay: "60ms" }}
+                    >
+                      <div className="space-y-1.5">
+                        <label
+                          htmlFor="alcohol"
+                          className="block text-[13px] font-medium text-[#8E8E93]"
+                        >
+                          Alcohol content
+                        </label>
+                        <input
+                          id="alcohol"
+                          type="text"
+                          value={applicationData.alcoholContent}
+                          onChange={(event) =>
+                            setApplicationData((current) => ({
+                              ...current,
+                              alcoholContent: event.target.value,
+                            }))
+                          }
+                          placeholder="e.g. 45% Alc./Vol. (90 Proof)"
+                          className="input-apple h-14 w-full rounded-[12px] border border-[#E5E5EA] bg-white px-4 text-[17px] text-[#1C1C1E] placeholder:opacity-60"
+                          style={{ minHeight: "56px" }}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label
+                          htmlFor="net-contents"
+                          className="block text-[13px] font-medium text-[#8E8E93]"
+                        >
+                          Net contents
+                        </label>
+                        <input
+                          id="net-contents"
+                          type="text"
+                          value={applicationData.netContents}
+                          onChange={(event) =>
+                            setApplicationData((current) => ({
+                              ...current,
+                              netContents: event.target.value,
+                            }))
+                          }
+                          placeholder="e.g. 750 mL"
+                          className="input-apple h-14 w-full rounded-[12px] border border-[#E5E5EA] bg-white px-4 text-[17px] text-[#1C1C1E] placeholder:opacity-60"
+                          style={{ minHeight: "56px" }}
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {!step2EditingWarning ? (
+                  <button
+                    type="button"
+                    onClick={() => setStep2EditingWarning(true)}
+                    className="step2-field-in flex w-full items-center justify-between gap-3 rounded-[12px] border border-[#E5E5EA] bg-white px-4 py-3.5 text-left text-[17px] text-[#1C1C1E] transition-colors hover:bg-[#F2F2F7]"
+                    style={{ minHeight: "56px", animationDelay: "160ms" }}
+                  >
+                    <span className="text-[#8E8E93]">
+                      {isStandardWarning
+                        ? "Using standard TTB warning"
+                        : "Government warning (custom)"}
+                    </span>
+                    <span className="shrink-0 text-[#007AFF]" aria-hidden>
+                      ✎
+                    </span>
+                  </button>
+                ) : (
+                  <div
+                    className="step2-field-in space-y-1.5"
+                    style={{ animationDelay: "0ms" }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <label
+                        htmlFor="government-warning"
+                        className="block text-[13px] font-medium text-[#8E8E93]"
+                      >
+                        Government health warning (exact text)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setStep2EditingWarning(false)}
+                        className="text-[13px] text-[#007AFF]"
+                      >
+                        Collapse
+                      </button>
+                    </div>
+                    <div className="relative pb-8">
+                      <textarea
+                        id="government-warning"
+                        value={applicationData.governmentWarning}
+                        onChange={(event) =>
+                          setApplicationData((current) => ({
+                            ...current,
+                            governmentWarning: event.target.value,
+                          }))
+                        }
+                        rows={6}
+                        className="input-apple w-full resize-y rounded-[12px] border border-[#E5E5EA] bg-white px-4 py-3 font-mono text-[15px] leading-relaxed text-[#1C1C1E] placeholder:opacity-60"
+                        style={{ lineHeight: 1.6 }}
+                      />
+                      <p
+                        className="absolute bottom-2 right-3 text-[11px] text-[#8E8E93]"
+                        style={{ opacity: 0.8 }}
+                      >
+                        {warningCharCount} characters
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="step2-buttons-in flex flex-col gap-4 pt-2">
                   <button
                     type="button"
                     onClick={() => setStep(1)}
-                    className="inline-flex min-h-[60px] flex-1 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-4 text-base font-semibold text-slate-800 shadow-sm transition-transform duration-150 hover:scale-[1.02] hover:bg-slate-50"
+                    className="self-start text-[17px] font-normal text-[#007AFF] transition-opacity hover:opacity-80"
                   >
                     Back
                   </button>
                   <button
                     type="submit"
                     disabled={isProcessing || !fileList.length}
-                    className="inline-flex min-h-[60px] flex-1 items-center justify-center rounded-lg bg-[#007AFF] px-4 py-4 text-base font-semibold text-white shadow-md transition-transform duration-150 hover:scale-[1.02] hover:bg-[#0066D6] disabled:cursor-not-allowed disabled:bg-slate-400 disabled:hover:scale-100"
+                    className="flex w-full min-h-[56px] items-center justify-center gap-2 rounded-[12px] px-6 py-4 text-[18px] font-semibold text-white shadow-lg transition-all duration-300 ease-out hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:grayscale disabled:hover:scale-100"
+                    style={{
+                      background:
+                        "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
+                      boxShadow: "0 4px 16px rgba(0, 122, 255, 0.3)",
+                    }}
                   >
-                    {isProcessing ? "Running verification..." : "Run verification"}
+                    {isProcessing ? (
+                      <>
+                        <span
+                          className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"
+                          aria-hidden
+                        />
+                        Running verification…
+                      </>
+                    ) : (
+                      "Run verification"
+                    )}
                   </button>
                 </div>
               </form>
@@ -546,20 +771,30 @@ export default function Home() {
   }
 
   if (step === 3) {
+    const hasResults = results.length > 0;
+    const safeIndex =
+      currentResultIndex < results.length ? currentResultIndex : 0;
+    const activeResult = hasResults ? results[safeIndex] : null;
+
+    const anyIssue =
+      activeResult?.checks.some(
+        (check) => check.status === "mismatch" || check.status === "missing",
+      ) ?? false;
+
     return (
-      <div className="min-h-screen bg-gradient-to-b from-[#F5F7FA] to-white text-slate-800">
-        <div className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-10">
+      <div className="min-h-screen bg-[#F2F2F7] text-[#1C1C1E]">
+        <div className="mx-auto flex max-w-5xl flex-col gap-10 px-4 py-10">
           <header className="space-y-2">
             {renderProgress()}
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-green-100 text-2xl">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#30D158]/10 text-2xl text-[#30D158]">
                 ✓
               </div>
               <div>
-                <h1 className="text-2xl font-semibold tracking-tight">
+                <h1 className="text-2xl font-semibold tracking-tight text-[#1C1C1E]">
                   Comparison results
                 </h1>
-                <p className="mt-1 text-sm text-slate-600">
+                <p className="mt-1 text-[17px] text-[#8E8E93]">
                   Review how the label matches the application data.
                 </p>
               </div>
@@ -567,123 +802,238 @@ export default function Home() {
           </header>
 
           {error ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-sm">
+            <div className="rounded-2xl border border-[#FF3B30]/30 bg-red-50 px-4 py-3 text-[17px] text-[#FF3B30] shadow-sm">
               {error}
             </div>
           ) : null}
 
-          <main className="space-y-6">
-            {!results.length ? (
-              <section className="rounded-2xl bg-white p-6 text-sm text-slate-600 shadow-md ring-1 ring-slate-200">
+          <main className="flex flex-col gap-10">
+            {!hasResults || !activeResult ? (
+              <section className="rounded-[24px] bg-white p-8 text-[17px] text-[#8E8E93] shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
                 No results yet. Run a verification to see comparisons.
               </section>
             ) : (
-              results.map((result, index) => (
+              <>
+                {/* Hero status card – 120px min height, spring entrance */}
                 <section
-                  key={result.fileName + index.toString()}
-                  className="rounded-2xl bg-white p-6 shadow-md ring-1 ring-slate-200"
+                  className={`animate-fade-scale-in flex min-h-[120px] items-center rounded-[24px] p-6 text-white shadow-[0_8px_24px_rgba(0,0,0,0.08)] ${
+                    anyIssue
+                      ? "bg-gradient-to-r from-[#FF9F0A] to-[#FF9500]"
+                      : "bg-gradient-to-r from-[#30D158] to-[#28CD4F]"
+                  }`}
+                  style={{ animationDuration: "0.5s", animationTimingFunction: "cubic-bezier(0.34, 1.56, 0.64, 1)" }}
                 >
-                  <div className="flex flex-col gap-6 lg:flex-row">
-                    <div className="w-full lg:w-1/3">
-                      <p className="text-sm font-medium text-slate-800">
+                  <div className="step3-hero-icon flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-4xl shadow-sm">
+                    {anyIssue ? "!" : "✓"}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[28px] font-semibold tracking-tight drop-shadow-sm">
+                      {anyIssue
+                        ? "Some fields need review"
+                        : "Label matches the application data"}
+                    </p>
+                    <p className="mt-1 text-[15px] opacity-90">
+                      Processing time: {activeResult.durationMs.toFixed(0)} ms
+                    </p>
+                  </div>
+                </section>
+
+                {/* Image + checklist – 40px gap */}
+                <section className="flex flex-col gap-10 lg:flex-row">
+                  <div className="flex w-full flex-col items-center lg:w-1/3">
+                    <div
+                      className="w-full max-w-xs rounded-[24px] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]"
+                      style={{ border: "1px solid rgba(0,0,0,0.06)" }}
+                    >
+                      <p className="text-[14px] font-medium text-[#1C1C1E]">
                         Label image
                       </p>
-                      <p className="mt-1 text-xs text-slate-600">
-                        {result.fileName}
+                      <p className="mt-1 text-[13px] text-[#8E8E93]">
+                        {activeResult.fileName}
                       </p>
-                      {fileList[index] ? (
+                      {fileList[safeIndex] ? (
                         <img
-                          src={URL.createObjectURL(fileList[index]!)}
-                          alt={result.fileName}
-                          className="mt-3 w-full rounded-xl border border-slate-200 bg-slate-50 object-contain"
+                          src={URL.createObjectURL(fileList[safeIndex]!)}
+                          alt={activeResult.fileName}
+                          className="mt-3 w-full rounded-2xl bg-[#F2F2F7] object-contain"
+                          style={{ border: "1px solid rgba(0,0,0,0.06)" }}
                         />
                       ) : null}
                     </div>
-                    <div className="w-full lg:w-2/3">
-                      <p className="text-sm font-medium text-slate-800">
-                        Field comparison
-                      </p>
-                      <p className="mt-1 text-xs text-slate-600">
-                        Processing time: {result.durationMs.toFixed(0)} ms
-                      </p>
-                      <div className="mt-3 overflow-x-auto">
-                        <table className="min-w-full border-separate border-spacing-y-1 text-xs">
-                          <thead>
-                            <tr className="text-left text-slate-500">
-                              <th className="px-2 py-1 font-medium">Field</th>
-                              <th className="px-2 py-1 font-medium">Status</th>
-                              <th className="px-2 py-1 font-medium">Expected</th>
-                              <th className="px-2 py-1 font-medium">On label</th>
-                              <th className="px-2 py-1 font-medium">Notes</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {result.checks.map((check, checkIndex) => {
-                              const statusColors: Record<typeof check.status, string> =
-                                {
-                                  match:
-                                    "bg-emerald-50 text-emerald-700 ring-emerald-100",
-                                  mismatch:
-                                    "bg-amber-50 text-amber-700 ring-amber-100",
-                                  missing:
-                                    "bg-red-50 text-red-700 ring-red-100",
-                                };
 
-                              const labelMap: Record<string, string> = {
-                                brandName: "Brand name",
-                                classType: "Class / type",
-                                alcoholContent: "Alcohol content",
-                                netContents: "Net contents",
-                                governmentWarning: "Government warning text",
-                                governmentWarningHeader:
-                                  "GOVERNMENT WARNING header",
-                              };
-
-                              return (
-                                <tr
-                                  key={check.field + checkIndex.toString()}
-                                  className="rounded-md bg-slate-50 align-top shadow-sm"
-                                >
-                                  <td className="px-2 py-1.5 text-slate-800">
-                                    {labelMap[check.field] ?? check.field}
-                                  </td>
-                                  <td className="px-2 py-1.5">
-                                    <span
-                                      className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ${statusColors[check.status]}`}
-                                    >
-                                      {check.status === "match" && "Match"}
-                                      {check.status === "mismatch" &&
-                                        "Needs review"}
-                                      {check.status === "missing" &&
-                                        "Not found"}
-                                    </span>
-                                  </td>
-                                  <td className="max-w-xs px-2 py-1.5 text-[11px] text-slate-600">
-                                    {check.expected ?? "—"}
-                                  </td>
-                                  <td className="max-w-xs px-2 py-1.5 text-[11px] text-slate-600">
-                                    {check.actual ?? "—"}
-                                  </td>
-                                  <td className="max-w-xs px-2 py-1.5 text-[11px] text-slate-500">
-                                    {check.notes ?? "—"}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
+                    {results.length > 1 ? (
+                      <div className="mt-6 flex flex-col items-center gap-3">
+                        <p className="text-[15px] font-semibold text-[#1C1C1E]">
+                          Label {safeIndex + 1} of {results.length}
+                        </p>
+                        <div className="flex items-center gap-4">
+                          <button
+                            type="button"
+                            aria-label="Previous label"
+                            disabled={safeIndex === 0}
+                            onClick={() =>
+                              setCurrentResultIndex((i) => Math.max(0, i - 1))
+                            }
+                            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-[#E5E5EA] bg-white text-[#1C1C1E] shadow-sm transition-all duration-150 hover:scale-[1.02] hover:shadow-md active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <span className="text-xl">‹</span>
+                          </button>
+                          <div className="flex items-center gap-2">
+                            {results.map((_, dotIndex) => (
+                              <button
+                                key={dotIndex}
+                                type="button"
+                                aria-label={`Go to label ${dotIndex + 1}`}
+                                onClick={() => setCurrentResultIndex(dotIndex)}
+                                className={`h-3 w-3 rounded-full transition-transform duration-300 ${
+                                  dotIndex === safeIndex
+                                    ? "scale-[1.3] bg-[#0A84FF] shadow-[0_0_8px_rgba(10,132,255,0.5)]"
+                                    : "bg-[#C7C7CC]"
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          <button
+                            type="button"
+                            aria-label="Next label"
+                            disabled={safeIndex >= results.length - 1}
+                            onClick={() =>
+                              setCurrentResultIndex((i) =>
+                                Math.min(results.length - 1, i + 1),
+                              )
+                            }
+                            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-[#E5E5EA] bg-white text-[#1C1C1E] shadow-sm transition-all duration-150 hover:scale-[1.02] hover:shadow-md active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <span className="text-xl">›</span>
+                          </button>
+                        </div>
                       </div>
+                    ) : null}
+                  </div>
+
+                  <div className="w-full lg:w-2/3">
+                    <div className="space-y-4">
+                      {activeResult.checks.map((check, index) => {
+                        const baseDelay = index * 80;
+                        const labelMap: Record<string, string> = {
+                          brandName: "Brand name",
+                          classType: "Class / type",
+                          alcoholContent: "Alcohol content",
+                          netContents: "Net contents",
+                          governmentWarning: "Government warning text",
+                          governmentWarningHeader: "GOVERNMENT WARNING header",
+                        };
+
+                        if (check.status === "match") {
+                          return (
+                            <div
+                              key={check.field + index.toString()}
+                              className="animate-fade-scale-in rounded-[24px] bg-[#E5E5EA]/40 px-4 py-3.5 shadow-sm"
+                              style={{
+                                animationDelay: `${baseDelay}ms`,
+                                animationDuration: "0.4s",
+                                animationTimingFunction:
+                                  "cubic-bezier(0.34, 1.56, 0.64, 1)",
+                              }}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#30D158]/20 text-[#30D158]">
+                                  ✓
+                                </div>
+                                <p className="text-base text-[#1C1C1E]">
+                                  {labelMap[check.field] ?? check.field} matches
+                                  the application record.
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        if (check.status === "mismatch") {
+                          return (
+                            <div
+                              key={check.field + index.toString()}
+                              className="step3-field-pulse-once animate-fade-scale-in rounded-[24px] bg-[#FFF4E5] px-4 py-4 shadow-sm"
+                              style={{
+                                animationDelay: `${baseDelay}ms`,
+                                animationDuration: "0.4s",
+                                animationTimingFunction:
+                                  "cubic-bezier(0.34, 1.56, 0.64, 1)",
+                              }}
+                            >
+                              <p className="text-base font-medium text-[#1C1C1E]">
+                                {labelMap[check.field] ?? check.field} needs
+                                review
+                              </p>
+                              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                                <div className="space-y-1">
+                                  <span className="inline-flex rounded-full bg-[#E5E5EA] px-3 py-1 text-xs font-medium text-[#1C1C1E]">
+                                    Expected
+                                  </span>
+                                  <p className="mt-1 rounded-lg bg-white px-3 py-2 font-mono text-[18px] text-[#1C1C1E]">
+                                    {check.expected ?? "—"}
+                                  </p>
+                                </div>
+                                <div className="space-y-1">
+                                  <span className="inline-flex rounded-full bg-[#FF9F0A]/25 px-3 py-1 text-xs font-medium text-[#B65E00]">
+                                    Found
+                                  </span>
+                                  <p className="mt-1 rounded-lg bg-white px-3 py-2 font-mono text-[18px] text-[#1C1C1E]">
+                                    {check.actual ?? "—"}
+                                  </p>
+                                </div>
+                              </div>
+                              {check.notes ? (
+                                <p className="mt-2 text-[13px] text-[#8E8E93]">
+                                  {check.notes}
+                                </p>
+                              ) : null}
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div
+                            key={check.field + index.toString()}
+                            className="step3-field-pulse-once animate-fade-scale-in rounded-[24px] bg-red-50 px-4 py-4 shadow-sm"
+                            style={{
+                              animationDelay: `${baseDelay}ms`,
+                              animationDuration: "0.4s",
+                              animationTimingFunction:
+                                "cubic-bezier(0.34, 1.56, 0.64, 1)",
+                            }}
+                          >
+                            <p className="text-base font-medium text-[#FF3B30]">
+                              {labelMap[check.field] ?? check.field} not found
+                              on the label.
+                            </p>
+                            {check.expected ? (
+                              <p className="mt-2 text-[13px] text-[#1C1C1E]">
+                                Expected:{" "}
+                                <span className="font-mono text-[18px]">
+                                  {check.expected}
+                                </span>
+                              </p>
+                            ) : null}
+                            {check.notes ? (
+                              <p className="mt-1 text-[13px] text-[#8E8E93]">
+                                {check.notes}
+                              </p>
+                            ) : null}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 </section>
-              ))
+              </>
             )}
 
             <div className="flex justify-center pt-2">
               <button
                 type="button"
                 onClick={resetWizard}
-                className="inline-flex min-h-[60px] items-center justify-center rounded-lg bg-[#007AFF] px-6 py-4 text-base font-semibold text-white shadow-md transition-transform duration-150 hover:scale-[1.02] hover:bg-[#0066D6]"
+                className="inline-flex min-h-[56px] items-center justify-center rounded-[12px] bg-[#0A84FF] px-6 py-4 text-[18px] font-semibold text-white shadow-[0_4px_16px_rgba(10,132,255,0.3)] transition-all duration-150 hover:scale-[1.02] hover:shadow-lg active:scale-[0.97]"
               >
                 Check another label
               </button>
