@@ -68,6 +68,7 @@ const extractFromOcrText = (text: string): ExtractedLabelData => {
 
 export default function Home() {
   const [mode, setMode] = useState<Mode>("single");
+  const [simpleMode, setSimpleMode] = useState(true);
   const [applicationData, setApplicationData] = useState<ApplicationLabelData>(
     defaultApplicationData,
   );
@@ -182,49 +183,41 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-10 sm:px-8">
-        <header className="flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-              TTB Label Verification (Prototype)
-            </h1>
-            <p className="mt-1 text-sm text-slate-600">
-              Upload a label, enter the application data, and let the tool flag
-              mismatches for human review.
-            </p>
+    <div className="min-h-screen bg-gradient-to-b from-sky-50 via-emerald-50 to-amber-50 text-slate-900">
+      <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-8 sm:px-8">
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="mt-1 hidden h-10 w-10 items-center justify-center rounded-2xl bg-sky-500 text-xl text-white shadow-sm sm:flex">
+              ✓
+            </div>
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                Grandma‑friendly label checker
+              </h1>
+              <p className="mt-1 text-sm text-slate-700">
+                Take a picture of a label, then we check that it matches what the
+                application says.
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Under the hood: TTB label verification prototype with on-device
+                OCR and detailed comparisons for agents.
+              </p>
+            </div>
           </div>
-          <div className="mt-2 flex items-center gap-2 text-xs text-slate-500 sm:mt-0">
+          <div className="mt-2 flex flex-col items-start gap-2 text-xs text-slate-600 sm:mt-0 sm:items-end">
             <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700 ring-1 ring-emerald-100">
               AI‑assisted · OCR on-device
             </span>
+            <button
+              type="button"
+              onClick={() => setSimpleMode((current) => !current)}
+              className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"
+            >
+              <span className="inline-block h-2 w-2 rounded-full bg-sky-500" />
+              {simpleMode ? "Simple view (on)" : "Simple view (off)"}
+            </button>
           </div>
         </header>
-
-        <div className="flex flex-wrap gap-2 text-sm font-medium">
-          <button
-            type="button"
-            onClick={() => setMode("single")}
-            className={`rounded-full px-3 py-1 ${
-              mode === "single"
-                ? "bg-slate-900 text-white"
-                : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100"
-            }`}
-          >
-            Single label
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("batch")}
-            className={`rounded-full px-3 py-1 ${
-              mode === "batch"
-                ? "bg-slate-900 text-white"
-                : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100"
-            }`}
-          >
-            Batch (multiple labels)
-          </button>
-        </div>
 
         {error ? (
           <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
@@ -239,59 +232,103 @@ export default function Home() {
           </div>
         ) : null}
 
+        {!simpleMode && (
+          <div className="flex flex-wrap gap-2 text-xs font-medium">
+            <span className="mr-1 text-[11px] uppercase tracking-wide text-slate-500">
+              Mode:
+            </span>
+            <button
+              type="button"
+              onClick={() => setMode("single")}
+              className={`rounded-full px-3 py-1 ${
+                mode === "single"
+                  ? "bg-slate-900 text-white"
+                  : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100"
+              }`}
+            >
+              Single label
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("batch")}
+              className={`rounded-full px-3 py-1 ${
+                mode === "batch"
+                  ? "bg-slate-900 text-white"
+                  : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100"
+              }`}
+            >
+              Batch (multiple labels)
+            </button>
+          </div>
+        )}
+
         <main className="grid gap-6 md:grid-cols-[minmax(0,2fr),minmax(0,3fr)]">
           <section className="flex flex-col gap-4">
-            <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-              <h2 className="text-sm font-semibold text-slate-900">
-                1. Label image{mode === "batch" ? "s" : ""}
+            <div className="rounded-xl bg-white/80 p-4 shadow-sm ring-1 ring-slate-200 backdrop-blur">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sky-500 text-xs font-bold text-white">
+                  1
+                </span>
+                Add your label photo
               </h2>
-              <p className="mt-1 text-xs text-slate-500">
-                Drag and drop or click to browse. Large images may take slightly
-                longer but should stay within a few seconds per label.
+              <p className="mt-1 text-xs text-slate-600">
+                Tap the big button and pick a clear picture of the label.
               </p>
-              <label className="mt-3 flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500 hover:border-slate-400 hover:bg-slate-100">
+              <label className="mt-3 flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-sky-300 bg-sky-50 px-4 py-8 text-center text-sm text-slate-600 shadow-sm hover:border-sky-400 hover:bg-sky-100">
                 <input
                   type="file"
                   accept="image/*"
-                  multiple={mode === "batch"}
+                  multiple={!simpleMode && mode === "batch"}
                   className="hidden"
                   onChange={(event) => handleFilesSelected(event.target.files)}
                 />
-                <span className="font-medium text-slate-800">
-                  Click to choose file
+                <span className="text-lg font-semibold text-slate-900">
+                  Tap here to pick a photo
                 </span>
-                <span className="mt-1 text-xs text-slate-500">
-                  {mode === "batch"
-                    ? "You can select multiple images at once."
-                    : "One label image at a time."}
+                <span className="mt-1 text-xs text-slate-600">
+                  {simpleMode
+                    ? "One label at a time."
+                    : mode === "batch"
+                      ? "You can select multiple images at once."
+                      : "One label image at a time."}
                 </span>
               </label>
 
               {fileList.length ? (
-                <ul className="mt-3 max-h-32 space-y-1 overflow-y-auto text-xs text-slate-700">
-                  {fileList.map((file) => (
-                    <li
-                      key={file.name + file.lastModified}
-                      className="flex items-center justify-between rounded-md bg-slate-50 px-2 py-1"
-                    >
-                      <span className="truncate">{file.name}</span>
-                      <span className="ml-2 shrink-0 text-[10px] text-slate-500">
-                        {(file.size / 1024).toFixed(0)} KB
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                <div className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800 ring-1 ring-emerald-100">
+                  <p className="font-medium">
+                    {fileList.length === 1
+                      ? "Photo added."
+                      : `${fileList.length} photos added.`}
+                  </p>
+                  <ul className="mt-1 max-h-24 space-y-1 overflow-y-auto text-[11px]">
+                    {fileList.map((file) => (
+                      <li
+                        key={file.name + file.lastModified}
+                        className="flex items-center justify-between gap-2"
+                      >
+                        <span className="truncate">{file.name}</span>
+                        <span className="shrink-0 text-[10px] text-emerald-700/80">
+                          {(file.size / 1024).toFixed(0)} KB
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ) : null}
             </div>
 
             {mode === "single" ? (
               <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-                <h2 className="text-sm font-semibold text-slate-900">
-                  2. Application data (what COLA says)
+                <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-xs font-bold text-white">
+                    2
+                  </span>
+                  What the application says
                 </h2>
-                <p className="mt-1 text-xs text-slate-500">
-                  These values represent the application record. The tool checks
-                  that the label matches these fields.
+                <p className="mt-1 text-xs text-slate-600">
+                  These boxes should match the application record. You can use
+                  the defaults or change them.
                 </p>
                 <form
                   className="mt-3 space-y-3 text-xs"
@@ -300,104 +337,124 @@ export default function Home() {
                     void handleRunSingle();
                   }}
                 >
-                  <div>
-                    <label className="block text-[11px] font-medium text-slate-700">
-                      Brand name
-                    </label>
-                    <input
-                      type="text"
-                      value={applicationData.brandName}
-                      onChange={(event) =>
-                        setApplicationData((current) => ({
-                          ...current,
-                          brandName: event.target.value,
-                        }))
-                      }
-                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
-                    />
-                  </div>
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center rounded-full bg-sky-50 px-3 py-1 text-[11px] font-medium text-sky-800 ring-1 ring-sky-200 hover:bg-sky-100"
+                    onClick={() => setApplicationData(defaultApplicationData)}
+                  >
+                    Use standard example values
+                  </button>
 
-                  <div>
-                    <label className="block text-[11px] font-medium text-slate-700">
-                      Class / type
-                    </label>
-                    <input
-                      type="text"
-                      value={applicationData.classType}
-                      onChange={(event) =>
-                        setApplicationData((current) => ({
-                          ...current,
-                          classType: event.target.value,
-                        }))
-                      }
-                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
-                    />
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg bg-slate-50 px-3 py-2">
                     <div>
                       <label className="block text-[11px] font-medium text-slate-700">
-                        Alcohol content
+                        Brand name
                       </label>
                       <input
                         type="text"
-                        value={applicationData.alcoholContent}
+                        value={applicationData.brandName}
                         onChange={(event) =>
                           setApplicationData((current) => ({
                             ...current,
-                            alcoholContent: event.target.value,
+                            brandName: event.target.value,
                           }))
                         }
-                        className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+                        className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                       />
                     </div>
-                    <div>
-                      <label className="block text-[11px] font-medium text-slate-700">
-                        Net contents
-                      </label>
-                      <input
-                        type="text"
-                        value={applicationData.netContents}
-                        onChange={(event) =>
-                          setApplicationData((current) => ({
-                            ...current,
-                            netContents: event.target.value,
-                          }))
-                        }
-                        className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-medium text-slate-700">
-                      Government health warning (exact text)
-                    </label>
-                    <textarea
-                      value={applicationData.governmentWarning}
-                      onChange={(event) =>
-                        setApplicationData((current) => ({
-                          ...current,
-                          governmentWarning: event.target.value,
-                        }))
-                      }
-                      rows={5}
-                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
-                    />
                     <p className="mt-1 text-[10px] text-slate-500">
-                      This should match the standard TTB warning text. The tool
-                      compares it word-for-word, ignoring spacing and
-                      punctuation.
+                      This should be the main brand name on the application.
                     </p>
                   </div>
+
+                  <details className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                    <summary className="cursor-pointer select-none text-[11px] font-medium text-slate-700">
+                      Show other details (for experts)
+                    </summary>
+                    <div className="mt-2 space-y-3">
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-700">
+                          Class / type
+                        </label>
+                        <input
+                          type="text"
+                          value={applicationData.classType}
+                          onChange={(event) =>
+                            setApplicationData((current) => ({
+                              ...current,
+                              classType: event.target.value,
+                            }))
+                          }
+                          className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                        />
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="block text-[11px] font-medium text-slate-700">
+                            Alcohol content
+                          </label>
+                          <input
+                            type="text"
+                            value={applicationData.alcoholContent}
+                            onChange={(event) =>
+                              setApplicationData((current) => ({
+                                ...current,
+                                alcoholContent: event.target.value,
+                              }))
+                            }
+                            className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-medium text-slate-700">
+                            Net contents
+                          </label>
+                          <input
+                            type="text"
+                            value={applicationData.netContents}
+                            onChange={(event) =>
+                              setApplicationData((current) => ({
+                                ...current,
+                                netContents: event.target.value,
+                              }))
+                            }
+                            className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-700">
+                          Government health warning (exact text)
+                        </label>
+                        <textarea
+                          value={applicationData.governmentWarning}
+                          onChange={(event) =>
+                            setApplicationData((current) => ({
+                              ...current,
+                              governmentWarning: event.target.value,
+                            }))
+                          }
+                          rows={5}
+                          className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                        />
+                        <p className="mt-1 text-[10px] text-slate-500">
+                          This should match the standard TTB warning text. The
+                          tool compares it word-for-word, ignoring spacing and
+                          punctuation.
+                        </p>
+                      </div>
+                    </div>
+                  </details>
 
                   <div className="pt-2">
                     <button
                       type="submit"
                       disabled={isProcessing}
-                      className="inline-flex w-full items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                      className="inline-flex w-full items-center justify-center rounded-full bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-slate-400"
                     >
-                      {isProcessing ? "Checking label..." : "Run verification"}
+                      {isProcessing ? "Checking label..." : "Check this label"}
                     </button>
                     <p className="mt-1 text-[10px] text-slate-500">
                       Target: results within ~5 seconds per simple label.
