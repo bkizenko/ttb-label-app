@@ -197,7 +197,12 @@ const extractFromOcrText = (text: string): ExtractedLabelData => {
 
 async function ocrImage(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  const base64 = btoa(binary);
   const res = await fetch("/api/ocr", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
