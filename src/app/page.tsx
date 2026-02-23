@@ -28,10 +28,10 @@ type VerificationResult =
 type Mode = "single" | "batch";
 
 const defaultApplicationData: ApplicationLabelData = {
-  brandName: "OLD TOM DISTILLERY",
-  classType: "Kentucky Straight Bourbon Whiskey",
-  alcoholContent: "45% Alc./Vol. (90 Proof)",
-  netContents: "750 mL",
+  brandName: "",
+  classType: "",
+  alcoholContent: "",
+  netContents: "",
   governmentWarning: STANDARD_GOVERNMENT_WARNING,
 };
 
@@ -178,6 +178,10 @@ export default function Home() {
   const [pendingReplaceResultIndex, setPendingReplaceResultIndex] = useState<
     number | null
   >(null);
+  const [progressCardDismissed, setProgressCardDismissed] = useState(false);
+  const [processingCurrentDebounced, setProcessingCurrentDebounced] =
+    useState(0);
+  const processingThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleFilesSelected = (files: FileList | null) => {
     if (!files) return;
@@ -310,6 +314,7 @@ export default function Home() {
 
         setResults(newResults);
         setProgressMessage(null);
+        setStep(3);
       } catch (e) {
         setCatastrophicError(
           "OCR processing stopped unexpectedly. Your images are safe—try again or contact support.",
@@ -337,9 +342,8 @@ export default function Home() {
     await runVerification(fileList, parsedBatchData);
   };
 
-  const handleRunWizard = async () => {
-    await runVerification(fileList, [applicationData]);
-    setStep(3);
+  const handleRunWizard = () => {
+    void runVerification(fileList, [applicationData]);
   };
 
   const runSingleImageVerification = useCallback(
@@ -404,6 +408,24 @@ export default function Home() {
 
   const scrollToFirstFailedRef = useRef<HTMLDivElement>(null);
 
+  /* Debounce progress to ~10Hz for animation performance */
+  useEffect(() => {
+    if (processingCurrent === processingCurrentDebounced) return;
+    const t = processingThrottleRef.current;
+    if (t) clearTimeout(t);
+    processingThrottleRef.current = setTimeout(
+      () => setProcessingCurrentDebounced(processingCurrent),
+      100,
+    );
+    return () => {
+      if (processingThrottleRef.current) clearTimeout(processingThrottleRef.current);
+    };
+  }, [processingCurrent, processingTotal, processingCurrentDebounced]);
+
+  useEffect(() => {
+    if (!isProcessing) setProcessingCurrentDebounced(0);
+  }, [isProcessing]);
+
   const resetWizard = () => {
     setMode("single");
     setStep(1);
@@ -422,7 +444,49 @@ export default function Home() {
     setStep2EditingWarning(false);
     setReplacingResultIndex(null);
     setPendingReplaceResultIndex(null);
+    setProgressCardDismissed(false);
   };
+
+  /* Keyboard shortcuts (enhance only; every action has a visible button) */
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isTextarea = target.tagName === "TEXTAREA";
+      const isInput = target.tagName === "INPUT";
+
+      if (e.key === "Escape") {
+        if (step === 2) {
+          setStep(1);
+          e.preventDefault();
+        } else if (step === 3 && !isProcessing) {
+          setStep(2);
+          e.preventDefault();
+        }
+        return;
+      }
+
+      if (step === 2 && e.key === "Enter" && !isTextarea) {
+        const form = target.closest("form");
+        if (form && !isProcessing && fileList.length > 0) {
+          handleRunWizard();
+          e.preventDefault();
+        }
+        return;
+      }
+
+      if (step === 3 && results.length > 1) {
+        if (e.key === "ArrowLeft") {
+          setCurrentResultIndex((i) => Math.max(0, i - 1));
+          e.preventDefault();
+        } else if (e.key === "ArrowRight") {
+          setCurrentResultIndex((i) => Math.min(results.length - 1, i + 1));
+          e.preventDefault();
+        }
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [step, isProcessing, fileList.length, results.length]);
 
   const renderProgress = () => {
     const steps = [1, 2, 3] as const;
@@ -459,9 +523,26 @@ export default function Home() {
     );
   };
 
+  /* Screen reader: announce step changes */
+  const stepAnnouncement =
+    step === 1
+      ? "Step 1 of 3: Upload label image"
+      : step === 2
+        ? "Step 2 of 3: Enter application data"
+        : "Step 3 of 3: Comparison results";
+
   if (step === 1) {
     return (
       <>
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className="sr-only"
+          key={step}
+        >
+          {stepAnnouncement}
+        </div>
         {catastrophicError ? (
           <div
             className="fixed inset-0 z-[100] flex items-center justify-center p-4"
@@ -658,6 +739,9 @@ export default function Home() {
 
     return (
       <div className="min-h-screen depth-0 text-[#1C1C1E]">
+        <div role="status" aria-live="polite" aria-atomic="true" className="sr-only" key={step}>
+          {stepAnnouncement}
+        </div>
         {catastrophicError ? (
           <div
             className="fixed inset-0 z-[100] flex items-center justify-center p-4"
@@ -742,7 +826,7 @@ export default function Home() {
                   Enter application data
                 </h1>
                 <p className="mt-1 text-[16px] text-[#8E8E93]">
-                  Confirm what the approved record says.
+                  Enter the fields from the approved COLA application record for this label.
                 </p>
               </div>
             </div>
@@ -771,7 +855,7 @@ export default function Home() {
                   </p>
                   <p className="mt-0.5 truncate text-[14px] text-[#8E8E93]">
                     {fileList.length > 1
-                      ? `${fileList.length} labels · same data for all`
+                      ? `${fileList.length} labels — each compared against the application record below`
                       : firstFile.name}
                   </p>
                 </div>
@@ -817,7 +901,7 @@ export default function Home() {
                           brandName: event.target.value,
                         }))
                       }
-                      placeholder="e.g. OLD TOM DISTILLERY"
+                      placeholder="Enter brand name from application"
                       className="input-apple h-14 w-full rounded-[16px] border border-[#E5E5EA] bg-white px-4 text-[16px] text-[#1C1C1E] placeholder:opacity-60"
                       style={{ minHeight: "56px" }}
                     />
@@ -842,7 +926,7 @@ export default function Home() {
                     className="step2-field-in flex w-full items-center justify-center gap-2 rounded-[16px] border border-[#E5E5EA] bg-white py-3.5 text-[16px] font-normal text-[#007AFF] transition-all duration-500 hover:bg-[#F2F2F7] active:scale-[0.97]"
                     style={{ minHeight: "56px", animationDelay: "80ms" }}
                   >
-                    Show all fields
+                    Show all fields ▼
                   </button>
                 ) : (
                   <>
@@ -930,7 +1014,7 @@ export default function Home() {
                     onClick={() => setStep2ShowAllFields(false)}
                     className="step2-field-in flex w-full items-center justify-center gap-2 rounded-[16px] border border-[#E5E5EA] bg-white py-3 text-[14px] font-normal text-[#8E8E93] transition-all duration-300 hover:bg-[#F2F2F7] active:scale-[0.98]"
                   >
-                    Show fewer fields
+                    Show fewer fields ▲
                   </button>
                 )}
 
@@ -998,13 +1082,15 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => setStep(1)}
-                    className="self-start text-[16px] font-normal text-[#007AFF] transition-opacity hover:opacity-80"
+                    className="self-start min-h-[44px] min-w-[44px] text-[16px] font-normal text-[#007AFF] transition-opacity hover:opacity-80"
+                    title="Go back (Escape)"
                   >
                     Back
                   </button>
                   <button
                     type="submit"
-                    disabled={isProcessing || !fileList.length}
+                    disabled={isProcessing || !fileList.length || !applicationData.brandName.trim()}
+                    title="Run verification (Enter)"
                     className="flex w-full min-h-[56px] items-center justify-center gap-2 rounded-[16px] px-6 py-4 text-[16px] font-semibold text-white transition-all duration-500 hover:scale-[1.02] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:grayscale disabled:hover:scale-100 depth-2"
                     style={{
                       background:
@@ -1046,50 +1132,79 @@ export default function Home() {
           </div>
         )}
         {isProcessing && fileList.length >= 2 && (
-          <div
-            className="fixed bottom-0 left-0 right-0 z-50 flex justify-center px-0 sm:px-4"
-            aria-live="polite"
-            aria-busy="true"
-          >
-            <div
-              className="flex w-full max-w-[420px] flex-col justify-center gap-3 rounded-t-[20px] px-5 pb-5 pt-4"
-              style={{
-                background: "rgba(255, 255, 255, 0.95)",
-                backdropFilter: "blur(40px)",
-                WebkitBackdropFilter: "blur(40px)",
-                boxShadow: "0 -4px 16px rgba(0, 0, 0, 0.06)",
-                borderTop: "1px solid rgba(0, 0, 0, 0.04)",
-                minHeight: "88px",
-              }}
-            >
-              <div className="flex items-center gap-3">
-                <span
-                  className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-[#1C1C1E] border-t-transparent"
-                  aria-hidden
-                />
-                <span className="text-[17px] font-semibold text-[#1C1C1E]">
-                  Processing label {processingCurrent} of {processingTotal}
-                </span>
-              </div>
+          <>
+            {!progressCardDismissed ? (
               <div
-                className="h-1.5 w-full overflow-hidden rounded-full bg-[#E5E5EA]"
-                role="progressbar"
-                aria-valuenow={processingTotal ? processingCurrent : 0}
-                aria-valuemin={0}
-                aria-valuemax={processingTotal}
-                aria-label={`Processing label ${processingCurrent} of ${processingTotal}`}
+                className="progress-card-enter fixed bottom-0 left-0 right-0 z-50 flex justify-center px-0 sm:px-4"
+                aria-live="polite"
+                aria-busy="true"
+                style={{ willChange: "transform" }}
               >
                 <div
-                  className="h-full rounded-full bg-[#007AFF] transition-all duration-300 ease-out"
+                  className="flex w-full max-w-[420px] flex-col gap-3 rounded-t-[20px] px-5 pb-5 pt-4"
                   style={{
-                    width: processingTotal
-                      ? `${(processingCurrent / processingTotal) * 100}%`
-                      : "0%",
+                    background: "rgba(255, 255, 255, 0.82)",
+                    backdropFilter: "blur(40px)",
+                    WebkitBackdropFilter: "blur(40px)",
+                    boxShadow: "0 -4px 16px rgba(0, 0, 0, 0.06)",
+                    borderTop: "1px solid rgba(0, 0, 0, 0.04)",
+                    minHeight: "88px",
                   }}
-                />
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-h-[44px] min-w-[44px] items-center gap-3">
+                      <span
+                        className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-[#1C1C1E] border-t-transparent"
+                        aria-hidden
+                      />
+                      <span className="text-[17px] font-semibold text-[#1C1C1E]">
+                        Processing label {processingCurrentDebounced} of {processingTotal}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setProgressCardDismissed(true)}
+                      className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-[#8E8E93] transition-colors hover:bg-black/5 hover:text-[#1C1C1E]"
+                      aria-label="Dismiss progress"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div
+                    className="h-1.5 w-full overflow-hidden rounded-full bg-[#E5E5EA]"
+                    role="progressbar"
+                    aria-valuenow={processingTotal ? processingCurrentDebounced : 0}
+                    aria-valuemin={0}
+                    aria-valuemax={processingTotal}
+                    aria-label={`Processing label ${processingCurrentDebounced} of ${processingTotal}`}
+                  >
+                    <div
+                      className="h-full rounded-full bg-[#007AFF] transition-all duration-300 ease-out"
+                      style={{
+                        width: processingTotal
+                          ? `${(processingCurrentDebounced / processingTotal) * 100}%`
+                          : "0%",
+                      }}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setStep(3)}
+                    className="min-h-[44px] text-[16px] font-semibold text-[#007AFF] hover:opacity-80"
+                  >
+                    Skip to results →
+                  </button>
+                </div>
               </div>
-            </div>
-          </div>
+            ) : (
+              <div
+                className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-black/12 px-4 py-2 text-[14px] font-medium text-[#1C1C1E] backdrop-blur-md"
+                aria-live="polite"
+              >
+                Processing {processingCurrentDebounced}/{processingTotal}
+              </div>
+            )}
+          </>
         )}
       </div>
     );
@@ -1114,6 +1229,9 @@ export default function Home() {
 
     return (
       <>
+        <div role="status" aria-live="polite" aria-atomic="true" className="sr-only" key={step}>
+          {stepAnnouncement}
+        </div>
         {catastrophicError ? (
           <div
             className="fixed inset-0 z-[100] flex items-center justify-center p-4"
@@ -1142,6 +1260,75 @@ export default function Home() {
             <button type="button" onClick={() => setBrowserBannerDismissed(true)} aria-label="Dismiss browser notice" className="shrink-0 rounded p-1 text-[#8E8E93] hover:bg-black/5 hover:text-[#1C1C1E]">×</button>
           </div>
         ) : null}
+        {/* Progress follows to Step 3 when user skipped to results (batch) */}
+        {isProcessing && fileList.length >= 2 && (
+          <>
+            {!progressCardDismissed ? (
+              <div
+                className="progress-card-enter fixed bottom-0 left-0 right-0 z-50 flex justify-center px-0 sm:px-4"
+                aria-live="polite"
+                aria-busy="true"
+                style={{ willChange: "transform" }}
+              >
+                <div
+                  className="flex w-full max-w-[420px] flex-col gap-3 rounded-t-[20px] px-5 pb-5 pt-4"
+                  style={{
+                    background: "rgba(255, 255, 255, 0.82)",
+                    backdropFilter: "blur(40px)",
+                    WebkitBackdropFilter: "blur(40px)",
+                    boxShadow: "0 -4px 16px rgba(0, 0, 0, 0.06)",
+                    borderTop: "1px solid rgba(0, 0, 0, 0.04)",
+                    minHeight: "88px",
+                  }}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-h-[44px] min-w-[44px] items-center gap-3">
+                      <span
+                        className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-[#1C1C1E] border-t-transparent"
+                        aria-hidden
+                      />
+                      <span className="text-[17px] font-semibold text-[#1C1C1E]">
+                        Processing label {processingCurrentDebounced} of {processingTotal}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setProgressCardDismissed(true)}
+                      className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-[#8E8E93] transition-colors hover:bg-black/5 hover:text-[#1C1C1E]"
+                      aria-label="Dismiss progress"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div
+                    className="h-1.5 w-full overflow-hidden rounded-full bg-[#E5E5EA]"
+                    role="progressbar"
+                    aria-valuenow={processingTotal ? processingCurrentDebounced : 0}
+                    aria-valuemin={0}
+                    aria-valuemax={processingTotal}
+                    aria-label={`Processing label ${processingCurrentDebounced} of ${processingTotal}`}
+                  >
+                    <div
+                      className="h-full rounded-full bg-[#007AFF] transition-all duration-300 ease-out"
+                      style={{
+                        width: processingTotal
+                          ? `${(processingCurrentDebounced / processingTotal) * 100}%`
+                          : "0%",
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div
+                className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-black/12 px-4 py-2 text-[14px] font-medium text-[#1C1C1E] backdrop-blur-md"
+                aria-live="polite"
+              >
+                Processing {processingCurrentDebounced}/{processingTotal}
+              </div>
+            )}
+          </>
+        )}
       <div className="min-h-screen depth-0 text-[#1C1C1E]">
         <div className="mx-auto flex max-w-5xl flex-col gap-10 px-4 py-10">
           <header className="space-y-2">
@@ -1825,7 +2012,7 @@ export default function Home() {
                   className="mt-2 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
                   placeholder={`[
   {
-    "brandName": "OLD TOM DISTILLERY",
+    "brandName": "",
     "classType": "Kentucky Straight Bourbon Whiskey",
     "alcoholContent": "45% Alc./Vol. (90 Proof)",
     "netContents": "750 mL",
