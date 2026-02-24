@@ -195,7 +195,9 @@ const extractFromOcrText = (text: string): ExtractedLabelData => {
   };
 };
 
-async function ocrImage(file: File): Promise<string> {
+async function ocrImage(
+  file: File,
+): Promise<{ text: string; extracted?: ExtractedLabelData }> {
   const buffer = await file.arrayBuffer();
   const bytes = new Uint8Array(buffer);
   let binary = "";
@@ -213,7 +215,10 @@ async function ocrImage(file: File): Promise<string> {
     throw new Error(err.error || res.statusText);
   }
   const data = await res.json();
-  return data.text ?? "";
+  return {
+    text: data.text ?? "",
+    ...(data.extracted && { extracted: data.extracted as ExtractedLabelData }),
+  };
 }
 
 function ThumbnailCard({
@@ -424,11 +429,13 @@ export default function Home() {
           setProgressMessage(`Reading label ${index + 1} of ${files.length}...`);
 
           try {
-            const ocrText = await ocrImage(file);
+            const { text: ocrText, extracted: extractedFromApi } =
+              await ocrImage(file);
             if (process.env.NODE_ENV === "development") {
               console.log("RAW OCR TEXT:", ocrText);
             }
-            const extracted = extractFromOcrText(ocrText);
+            const extracted =
+              extractedFromApi ?? extractFromOcrText(ocrText);
             const checks = compareLabelData(appData, extracted);
             const durationMs = performance.now() - start;
             newResults.push({
@@ -487,11 +494,13 @@ export default function Home() {
       setReplacingResultIndex(resultIndex);
       try {
         const start = performance.now();
-        const ocrText = await ocrImage(file);
+        const { text: ocrText, extracted: extractedFromApi } =
+          await ocrImage(file);
         if (process.env.NODE_ENV === "development") {
           console.log("RAW OCR TEXT:", ocrText);
         }
-        const extracted = extractFromOcrText(ocrText);
+        const extracted =
+          extractedFromApi ?? extractFromOcrText(ocrText);
         const checks = compareLabelData(applicationData, extracted);
         const durationMs = performance.now() - start;
         setResults((prev) => {
