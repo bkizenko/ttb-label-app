@@ -31,6 +31,8 @@ const defaultApplicationData: ApplicationLabelData = {
   classType: "Kentucky Straight Bourbon Whiskey",
   alcoholContent: "45% Alc./Vol. (90 Proof)",
   netContents: "750 mL",
+  bottlerNameAddress: "",
+  countryOfOrigin: "",
   governmentWarning: STANDARD_GOVERNMENT_WARNING,
 };
 
@@ -183,7 +185,7 @@ const extractFromOcrText = (text: string): ExtractedLabelData => {
           .trim()
       : undefined;
 
-  const hasExactHeader = /GOVERNMENT WARNING[.:]/i.test(text);
+  const hasExactHeader = /GOVERNMENT WARNING[.:]/.test(text);
 
   return {
     brandName,
@@ -192,6 +194,7 @@ const extractFromOcrText = (text: string): ExtractedLabelData => {
     netContents,
     governmentWarningText: warningText,
     hasGovernmentWarningHeaderExact: hasExactHeader,
+    governmentWarningHeaderIsBold: undefined,
   };
 };
 
@@ -215,9 +218,60 @@ async function ocrImage(
     throw new Error(err.error || res.statusText);
   }
   const data = await res.json();
+  const text = data.text ?? "";
+  const extractedFromApi = data.extracted as ExtractedLabelData | undefined;
+
+  if (extractedFromApi) {
+    return { text, extracted: extractedFromApi };
+  }
+
+  // Fallback: try parsing structured JSON from `text`.
+  // If Gemini returns non-JSON, we'll fall through and let the caller use `extractFromOcrText(text)`.
+  try {
+    const parsed = JSON.parse(text) as Record<string, unknown>;
+    const strip = (s: string) => s.replace(/\s+/g, " ").trim();
+
+    const headerAllCaps =
+      parsed.isGovernmentWarningHeaderAllCaps === true
+        ? true
+        : parsed.isGovernmentWarningHeaderAllCaps === false
+          ? false
+          : undefined;
+    const headerBold =
+      parsed.isGovernmentWarningHeaderBold === true
+        ? true
+        : parsed.isGovernmentWarningHeaderBold === false
+          ? false
+          : undefined;
+
+    const extracted: ExtractedLabelData = {
+      brandName: typeof parsed.brandName === "string" ? strip(parsed.brandName) : undefined,
+      classType: typeof parsed.classType === "string" ? strip(parsed.classType) : undefined,
+      alcoholContent:
+        typeof parsed.alcoholContent === "string" ? strip(parsed.alcoholContent) : undefined,
+      netContents: typeof parsed.netContents === "string" ? strip(parsed.netContents) : undefined,
+      bottlerNameAddress:
+        typeof parsed.bottlerNameAddress === "string"
+          ? strip(parsed.bottlerNameAddress)
+          : undefined,
+      countryOfOrigin:
+        typeof parsed.countryOfOrigin === "string"
+          ? strip(parsed.countryOfOrigin)
+          : undefined,
+      governmentWarningText:
+        typeof parsed.governmentWarningText === "string"
+          ? strip(parsed.governmentWarningText)
+          : undefined,
+      hasGovernmentWarningHeaderExact: headerAllCaps === true,
+      governmentWarningHeaderIsBold: headerBold,
+    };
+
+    return { text, extracted };
+  } catch {
+    // no-op
+  }
   return {
-    text: data.text ?? "",
-    ...(data.extracted && { extracted: data.extracted as ExtractedLabelData }),
+    text,
   };
 }
 
@@ -736,6 +790,12 @@ export default function Home() {
         <div className="min-h-screen depth-0 text-[#1C1C1E]">
         <div className="mx-auto flex max-w-xl flex-col gap-10 px-4 py-10 sm:py-12">
           <header className="space-y-2">
+            <p
+              className="text-[13px] font-semibold tracking-wide text-[#8E8E93]"
+              style={{ letterSpacing: "0.5px" }}
+            >
+              TTB Label Verification
+            </p>
             {renderProgress()}
             <div className="step1-header-in flex items-center gap-4">
               <div
@@ -1125,6 +1185,52 @@ export default function Home() {
 
                 <div className="step2-field-in space-y-1.5">
                   <label
+                    htmlFor="bottler-name-address"
+                    className="block text-[14px] font-medium text-[#8E8E93]"
+                  >
+                    Bottler/Producer name & address
+                  </label>
+                  <input
+                    id="bottler-name-address"
+                    type="text"
+                    value={applicationData.bottlerNameAddress}
+                    onChange={(event) =>
+                      setApplicationData((current) => ({
+                        ...current,
+                        bottlerNameAddress: event.target.value,
+                      }))
+                    }
+                    placeholder="e.g., Bottled by Old Tom Distillery, 123 Main St, Louisville, KY"
+                    className="input-apple h-14 w-full rounded-[16px] border border-[#E5E5EA] bg-white px-4 text-[16px] text-[#1C1C1E] placeholder:opacity-60"
+                    style={{ minHeight: "56px" }}
+                  />
+                </div>
+
+                <div className="step2-field-in space-y-1.5">
+                  <label
+                    htmlFor="country-of-origin"
+                    className="block text-[14px] font-medium text-[#8E8E93]"
+                  >
+                    Country of origin
+                  </label>
+                  <input
+                    id="country-of-origin"
+                    type="text"
+                    value={applicationData.countryOfOrigin}
+                    onChange={(event) =>
+                      setApplicationData((current) => ({
+                        ...current,
+                        countryOfOrigin: event.target.value,
+                      }))
+                    }
+                    placeholder="e.g., Mexico (leave blank if domestic)"
+                    className="input-apple h-14 w-full rounded-[16px] border border-[#E5E5EA] bg-white px-4 text-[16px] text-[#1C1C1E] placeholder:opacity-60"
+                    style={{ minHeight: "56px" }}
+                  />
+                </div>
+
+                <div className="step2-field-in space-y-1.5">
+                  <label
                     htmlFor="government-warning"
                     className="block text-[14px] font-medium text-[#8E8E93]"
                   >
@@ -1210,8 +1316,11 @@ export default function Home() {
                 "Class/Type",
                 "Alcohol content",
                 "Net contents",
+                  "Bottler/Producer name & address",
+                  "Country of origin",
                 "Government warning text",
-                "GOVERNMENT WARNING header",
+                  "GOVERNMENT WARNING header (all caps)",
+                  "GOVERNMENT WARNING header (bold)",
               ].map((label) => (
                 <div key={label} className="flex flex-col gap-2">
                   <span className="text-[14px] font-medium text-[#8E8E93]">
@@ -1589,8 +1698,11 @@ export default function Home() {
                     classType: "Class/Type",
                     alcoholContent: "Alcohol content",
                     netContents: "Net contents",
+                    bottlerNameAddress: "Bottler/Producer name & address",
+                    countryOfOrigin: "Country of origin",
                     governmentWarning: "Government warning text",
-                    governmentWarningHeader: "GOVERNMENT WARNING header",
+                    governmentWarningHeader: "GOVERNMENT WARNING header (all caps)",
+                    governmentWarningHeaderBold: "GOVERNMENT WARNING header (bold)",
                   };
                   const fieldsNeedingReview = activeResult.checks.filter(
                     (c) =>

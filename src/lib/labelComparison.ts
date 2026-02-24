@@ -3,6 +3,8 @@ export type ApplicationLabelData = {
   classType: string;
   alcoholContent: string;
   netContents: string;
+  bottlerNameAddress: string;
+  countryOfOrigin: string;
   governmentWarning: string;
 };
 
@@ -11,14 +13,20 @@ export type ExtractedLabelData = {
   classType?: string;
   alcoholContent?: string;
   netContents?: string;
+  bottlerNameAddress?: string;
+  countryOfOrigin?: string;
   governmentWarningText?: string;
   hasGovernmentWarningHeaderExact?: boolean;
+  governmentWarningHeaderIsBold?: boolean;
 };
 
 export type FieldCheckStatus = "match" | "mismatch" | "missing";
 
 export type FieldCheck = {
-  field: keyof ApplicationLabelData | "governmentWarningHeader";
+  field:
+    | keyof ApplicationLabelData
+    | "governmentWarningHeader"
+    | "governmentWarningHeaderBold";
   status: FieldCheckStatus;
   expected?: string;
   actual?: string;
@@ -270,6 +278,48 @@ export const compareLabelData = (
     }
   }
 
+  // Bottler/producer name + address: fuzzy
+  {
+    const expectedRaw = application.bottlerNameAddress;
+    const actualRaw = extracted.bottlerNameAddress;
+    const expected =
+      typeof expectedRaw === "string" ? normalizeWhitespace(expectedRaw) : "";
+    const actual =
+      typeof actualRaw === "string" ? normalizeWhitespace(actualRaw) : "";
+
+    if (!actualRaw || actual === "") {
+      checks.push({
+        field: "bottlerNameAddress",
+        status: "missing",
+        expected: expectedRaw,
+        notes: "Not clearly found on label",
+      });
+    } else {
+      pushFuzzyCheck(checks, "bottlerNameAddress", expected, actual, 80);
+    }
+  }
+
+  // Country of origin (imports): fuzzy
+  {
+    const expectedRaw = application.countryOfOrigin;
+    const actualRaw = extracted.countryOfOrigin;
+    const expected =
+      typeof expectedRaw === "string" ? normalizeWhitespace(expectedRaw) : "";
+    const actual =
+      typeof actualRaw === "string" ? normalizeWhitespace(actualRaw) : "";
+
+    if (!actualRaw || actual === "") {
+      checks.push({
+        field: "countryOfOrigin",
+        status: "missing",
+        expected: expectedRaw,
+        notes: "Not clearly found on label",
+      });
+    } else {
+      pushFuzzyCheck(checks, "countryOfOrigin", expected, actual, 90);
+    }
+  }
+
   const expectedWarning = normalizeWhitespace(application.governmentWarning);
   const actualWarning = extracted.governmentWarningText
     ? normalizeWhitespace(extracted.governmentWarningText)
@@ -307,7 +357,19 @@ export const compareLabelData = (
       ? "GOVERNMENT WARNING:"
       : "Not found exactly as 'GOVERNMENT WARNING:'",
     notes:
-      "Header must appear in all caps; bold styling cannot be detected from OCR.",
+      "Header must appear in all caps.",
+  });
+
+  const bold = extracted.governmentWarningHeaderIsBold;
+  checks.push({
+    field: "governmentWarningHeaderBold",
+    status: bold === true ? "match" : bold === false ? "mismatch" : "missing",
+    expected: "Bold",
+    actual: bold === true ? "Bold" : bold === false ? "Not bold" : "Not detected",
+    notes:
+      bold == null
+        ? "Bold styling not detected."
+        : "Header must be bold.",
   });
 
   return checks;

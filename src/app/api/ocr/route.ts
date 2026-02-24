@@ -1,16 +1,32 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextRequest, NextResponse } from "next/server";
-import sharp from "sharp";
 import type { ExtractedLabelData } from "@/lib/labelComparison";
 
-const OCR_PROMPT = `Read every piece of text on this alcohol bottle label carefully and completely. Return ONLY a JSON object with these fields: brandName (the full brand name exactly as printed, including all words), classType, alcoholContent, netContents, governmentWarning (the complete warning text word-for-word, note if GOVERNMENT WARNING header is bold and/or all caps), producerName, countryOfOrigin. Also include governmentWarningHeaderIsBold (true if the header appears bold on the label) and governmentWarningHeaderIsAllCaps (true if the header is in all capitals). If a field is not found, use empty string. No markdown or commentary.`;
+const OCR_PROMPT = `Analyze this alcohol label image and extract structured fields.
+
+Return ONLY valid JSON (no markdown fences, no commentary). If a field is not visible on the label, set it to null.
+
+Schema:
+{
+  "brandName": "string",
+  "classType": "string",
+  "alcoholContent": "string",
+  "netContents": "string",
+  "bottlerNameAddress": "string or null",
+  "countryOfOrigin": "string or null",
+  "governmentWarningText": "string or null",
+  "isGovernmentWarningHeaderAllCaps": "boolean",
+  "isGovernmentWarningHeaderBold": "boolean"
+}
+
+Rules:
+- Preserve the label's wording exactly for governmentWarningText.
+- brandName should be the complete brand name exactly as printed (include all words).
+- If government warning is not visible, set governmentWarningText to null and booleans to false.`;
 
 export async function POST(req: NextRequest) {
   const t0 = Date.now();
-  console.log("[OCR] route hit", t0);
-
   const apiKey = process.env.GEMINI_API_KEY;
-  console.log("[OCR] API key present:", !!apiKey);
 
   if (!apiKey) {
     return NextResponse.json(
@@ -34,47 +50,8 @@ export async function POST(req: NextRequest) {
   const tAfterBody = Date.now();
   console.log("[OCR] body parsed", tAfterBody - t0, "ms");
 
-  const ONE_MB = 1024 * 1024;
-  const MAX_LONGEST_SIDE = 1280; // cap for speed (~5s target)
-  const MIN_LONGEST_SIDE = 1024; // below this OCR often fails
-  let payloadBase64 = imageBase64;
-  let payloadMimeType = mimeType;
-  const tResizeStart = Date.now();
-  try {
-    const inputBuffer = Buffer.from(imageBase64, "base64");
-    const pipeline = sharp(inputBuffer);
-    const meta = await pipeline.metadata();
-    const w = meta.width ?? 0;
-    const h = meta.height ?? 0;
-    const longest = Math.max(w, h);
-
-    if (inputBuffer.length > ONE_MB) {
-      const resizedBuffer = await sharp(inputBuffer)
-        .resize(MAX_LONGEST_SIDE, MAX_LONGEST_SIDE, {
-          fit: "inside",
-          withoutEnlargement: true,
-        })
-        .jpeg({ quality: 90 })
-        .toBuffer();
-      payloadBase64 = resizedBuffer.toString("base64");
-      payloadMimeType = "image/jpeg";
-    } else if (longest < MIN_LONGEST_SIDE && longest > 0) {
-      const resizedBuffer = await sharp(inputBuffer)
-        .resize(MIN_LONGEST_SIDE, MIN_LONGEST_SIDE, {
-          fit: "inside",
-          withoutEnlargement: false,
-        })
-        .jpeg({ quality: 90 })
-        .toBuffer();
-      payloadBase64 = resizedBuffer.toString("base64");
-      payloadMimeType = "image/jpeg";
-    }
-  } catch (e) {
-    console.warn("[OCR] resize failed, using original image", e);
-  }
-  const tAfterResize = Date.now();
-  console.log("[OCR] pre-processing (resize)", tAfterResize - tResizeStart, "ms");
-  console.log("[OCR] pre-processing total (parse + resize)", tAfterResize - t0, "ms");
+  const payloadBase64 = imageBase64;
+  const payloadMimeType = mimeType;
 
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
@@ -106,12 +83,30 @@ export async function POST(req: NextRequest) {
     const stripNewlines = (s: string) => s.replace(/\s+/g, " ").trim();
 
     const govWarning =
-      typeof parsed.governmentWarning === "string"
-        ? stripNewlines(parsed.governmentWarning)
+      typeof parsed.governmentWarningText === "string"
+        ? stripNewlines(parsed.governmentWarningText)
         : undefined;
-    const headerBold = parsed.governmentWarningHeaderIsBold === true;
-    const headerAllCaps = parsed.governmentWarningHeaderIsAllCaps === true;
-    const hasGovernmentWarningHeaderExact = headerBold && headerAllCaps;
+    const bottlerNameAddress =
+      typeof parsed.bottlerNameAddress === "string"
+        ? stripNewlines(parsed.bottlerNameAddress)
+        : undefined;
+    const countryOfOrigin =
+      typeof parsed.countryOfOrigin === "string"
+        ? stripNewlines(parsed.countryOfOrigin)
+        : undefined;
+    const headerBold =
+      parsed.isGovernmentWarningHeaderBold === true
+        ? true
+        : parsed.isGovernmentWarningHeaderBold === false
+          ? false
+          : undefined;
+    const headerAllCaps =
+      parsed.isGovernmentWarningHeaderAllCaps === true
+        ? true
+        : parsed.isGovernmentWarningHeaderAllCaps === false
+          ? false
+          : undefined;
+    const hasGovernmentWarningHeaderExact = headerAllCaps === true;
 
     extracted = {
       brandName:
@@ -130,8 +125,11 @@ export async function POST(req: NextRequest) {
         typeof parsed.netContents === "string"
           ? stripNewlines(parsed.netContents)
           : undefined,
+      bottlerNameAddress,
+      countryOfOrigin,
       governmentWarningText: govWarning,
       hasGovernmentWarningHeaderExact,
+      governmentWarningHeaderIsBold: headerBold,
     };
   } catch {
     console.log("[OCR] JSON parse failed, returning raw text only");

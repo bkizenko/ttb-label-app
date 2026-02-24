@@ -19,19 +19,28 @@ The focus is on **fast, obvious verification** of routine fields, keeping human 
 
 Behind the scenes:
 
-- OCR is done **on-device** using `tesseract.js` (no external ML endpoints).
-- A small heuristic parser extracts likely values (brand, class/type, ABV, net contents, government warning).
+- OCR uses **Google Gemini 2.5 Flash** via a server-side API route (`/api/ocr`).
+- Gemini returns **structured JSON** fields (brand, class/type, ABV, net contents, bottler/producer info, country of origin, government warning).
 - Comparison logic normalizes text to tolerate:
   - Case differences (`STONE'S THROW` vs `Stone's Throw`).
   - Spacing and punctuation noise.
   - Minor formatting differences, while still surfacing potential issues for human review.
-- The **government warning text** is compared word-for-word (ignoring spacing/punctuation), and the app separately checks for the exact `GOVERNMENT WARNING:` header in all caps.
+- The **government warning text** is compared word-for-word (ignoring spacing/punctuation), and the app separately validates the `GOVERNMENT WARNING:` header for **all caps** and **bold**.
 
 ### Getting started (local)
 
 Prerequisites:
 
 - Node.js 18+ and npm installed.
+- A Google AI Studio API key (`GEMINI_API_KEY`).
+
+Create a `.env.local` file:
+
+```bash
+cp .env.example .env.local
+```
+
+Then set `GEMINI_API_KEY` in `.env.local`.
 
 Install dependencies:
 
@@ -66,7 +75,7 @@ For the best experience during this prototype:
    - In batch mode you can select multiple images at once.
 
 3. **Provide application data**
-   - **Single**: fill in the form for brand, class/type, ABV, net contents, and the government warning.
+   - **Single**: fill in the form for brand, class/type, ABV, net contents, bottler/producer name & address, country of origin, and the government warning.
    - **Batch**: paste a JSON array of application records, for example:
 
      ```json
@@ -76,6 +85,8 @@ For the best experience during this prototype:
          "classType": "Kentucky Straight Bourbon Whiskey",
          "alcoholContent": "45% Alc./Vol. (90 Proof)",
          "netContents": "750 mL",
+         "bottlerNameAddress": "Bottled by Old Tom Distillery, Louisville, KY",
+         "countryOfOrigin": "United States",
          "governmentWarning": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems."
        }
      ]
@@ -98,9 +109,9 @@ For the best experience during this prototype:
   - Keeps the UI visually clean and consistent with minimal CSS overhead.
   - Helps emphasize key actions and statuses (e.g., green for matches, amber for review, red for missing).
 
-- **On-device OCR via `tesseract.js`**
-  - Avoids outbound calls to ML endpoints, which are often blocked on government networks.
-  - Keeps this prototype closer to something that could be hosted entirely inside a secure environment.
+- **Server-side OCR via Google Gemini API**
+  - Uses Gemini Vision to extract structured fields from the label image.
+  - Trades simplicity of deployment for requiring outbound access and an API key.
 
 - **Heuristic parsing and comparison**
   - Extracts fields with simple regexes and heuristics rather than a heavy model.
@@ -141,14 +152,14 @@ For the best experience during this prototype:
 
 ## Known Limitations
 
-**OCR Accuracy**: Browser-based Tesseract struggles with decorative fonts and styled text.
+**OCR Accuracy**: Gemini can still struggle with extreme glare, severe skew, or very small decorative text.
 When OCR returns partial matches (e.g., "Kentucky Straight" instead of "Kentucky Straight
 Bourbon Whiskey"), the system uses substring matching to flag these for agent review rather
 than rejecting them outright. This matches the real-world workflow where agents use judgment
 for minor discrepancies.
 
-**Future Enhancement**: Production deployment could use Google Cloud Vision or AWS Textract
-for improved accuracy on styled labels.
+**Future Enhancement**: A production deployment could add image pre-processing (deskew, contrast)
+and/or a dedicated OCR/Vision service tuned for label layouts.
 
 ### Next steps if this were extended
 

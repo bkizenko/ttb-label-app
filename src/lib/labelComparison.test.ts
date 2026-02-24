@@ -68,6 +68,8 @@ const baseApplication: ApplicationLabelData = {
   classType: "Bourbon Whiskey",
   alcoholContent: "45% Alc./Vol. (90 Proof)",
   netContents: "750 mL",
+  bottlerNameAddress: "Bottled by Stone's Throw Distillery, Louisville, KY",
+  countryOfOrigin: "United States",
   governmentWarning: STANDARD_GOVERNMENT_WARNING,
 };
 
@@ -78,8 +80,11 @@ describe("compareLabelData", () => {
       classType: "Bourbon Whiskey",
       alcoholContent: "45% Alc./Vol. (90 Proof)",
       netContents: "750 mL",
+      bottlerNameAddress: baseApplication.bottlerNameAddress,
+      countryOfOrigin: baseApplication.countryOfOrigin,
       governmentWarningText: STANDARD_GOVERNMENT_WARNING,
       hasGovernmentWarningHeaderExact: true,
+      governmentWarningHeaderIsBold: true,
     };
     const checks = compareLabelData(baseApplication, extracted);
     const brandCheck = checks.find((c) => c.field === "brandName");
@@ -94,8 +99,11 @@ describe("compareLabelData", () => {
       classType: "Bourbon Whiskey",
       alcoholContent: "45% Alc./Vol. (90 Proof)",
       netContents: "750 mL",
+      bottlerNameAddress: baseApplication.bottlerNameAddress,
+      countryOfOrigin: baseApplication.countryOfOrigin,
       governmentWarningText: STANDARD_GOVERNMENT_WARNING,
       hasGovernmentWarningHeaderExact: true,
+      governmentWarningHeaderIsBold: true,
     };
     const checks = compareLabelData(baseApplication, extracted);
     const netCheck = checks.find((c) => c.field === "netContents");
@@ -108,8 +116,11 @@ describe("compareLabelData", () => {
       classType: baseApplication.classType,
       alcoholContent: baseApplication.alcoholContent,
       netContents: "750mL",
+      bottlerNameAddress: baseApplication.bottlerNameAddress,
+      countryOfOrigin: baseApplication.countryOfOrigin,
       governmentWarningText: STANDARD_GOVERNMENT_WARNING,
       hasGovernmentWarningHeaderExact: true,
+      governmentWarningHeaderIsBold: true,
     };
     const checks = compareLabelData(baseApplication, extracted);
     expect(checks.find((c) => c.field === "netContents")?.status).toBe("match");
@@ -125,8 +136,11 @@ describe("compareLabelData", () => {
       classType: baseApplication.classType,
       alcoholContent: "45 % Alc/Vol (90 Proof)",
       netContents: baseApplication.netContents,
+      bottlerNameAddress: baseApplication.bottlerNameAddress,
+      countryOfOrigin: baseApplication.countryOfOrigin,
       governmentWarningText: STANDARD_GOVERNMENT_WARNING,
       hasGovernmentWarningHeaderExact: true,
+      governmentWarningHeaderIsBold: true,
     };
     const checks = compareLabelData(app, extracted);
     expect(checks.find((c) => c.field === "alcoholContent")?.status).toBe(
@@ -144,8 +158,11 @@ describe("compareLabelData", () => {
       classType: baseApplication.classType,
       alcoholContent: baseApplication.alcoholContent,
       netContents: "700 mL",
+      bottlerNameAddress: baseApplication.bottlerNameAddress,
+      countryOfOrigin: baseApplication.countryOfOrigin,
       governmentWarningText: STANDARD_GOVERNMENT_WARNING,
       hasGovernmentWarningHeaderExact: true,
+      governmentWarningHeaderIsBold: true,
     };
     const checks = compareLabelData(app, extracted);
     expect(checks.find((c) => c.field === "netContents")?.status).toBe(
@@ -163,8 +180,11 @@ describe("compareLabelData", () => {
       classType: baseApplication.classType,
       alcoholContent: baseApplication.alcoholContent,
       netContents: baseApplication.netContents,
+      bottlerNameAddress: baseApplication.bottlerNameAddress,
+      countryOfOrigin: baseApplication.countryOfOrigin,
       governmentWarningText: STANDARD_GOVERNMENT_WARNING,
       hasGovernmentWarningHeaderExact: true,
+      governmentWarningHeaderIsBold: true,
     };
     const checks = compareLabelData(app, extracted);
     const brandCheck = checks.find((c) => c.field === "brandName");
@@ -181,8 +201,11 @@ describe("compareLabelData", () => {
       classType: baseApplication.classType,
       alcoholContent: baseApplication.alcoholContent,
       netContents: baseApplication.netContents,
+      bottlerNameAddress: baseApplication.bottlerNameAddress,
+      countryOfOrigin: baseApplication.countryOfOrigin,
       governmentWarningText: STANDARD_GOVERNMENT_WARNING,
       hasGovernmentWarningHeaderExact: true,
+      governmentWarningHeaderIsBold: true,
     };
     const checks = compareLabelData(app, extracted);
     const brandCheck = checks.find((c) => c.field === "brandName");
@@ -195,8 +218,11 @@ describe("compareLabelData", () => {
       classType: baseApplication.classType,
       alcoholContent: "40% Alc./Vol.",
       netContents: baseApplication.netContents,
+      bottlerNameAddress: baseApplication.bottlerNameAddress,
+      countryOfOrigin: baseApplication.countryOfOrigin,
       governmentWarningText: STANDARD_GOVERNMENT_WARNING,
       hasGovernmentWarningHeaderExact: true,
+      governmentWarningHeaderIsBold: true,
     };
     const checks = compareLabelData(baseApplication, extracted);
     const alcCheck = checks.find((c) => c.field === "alcoholContent");
@@ -211,8 +237,11 @@ describe("compareLabelData", () => {
       classType: baseApplication.classType,
       alcoholContent: baseApplication.alcoholContent,
       netContents: baseApplication.netContents,
+      bottlerNameAddress: baseApplication.bottlerNameAddress,
+      countryOfOrigin: baseApplication.countryOfOrigin,
       governmentWarningText: wrongWarning,
       hasGovernmentWarningHeaderExact: false,
+      governmentWarningHeaderIsBold: false,
     };
     const checks = compareLabelData(baseApplication, extracted);
     const warningCheck = checks.find((c) => c.field === "governmentWarning");
@@ -223,14 +252,38 @@ describe("compareLabelData", () => {
     expect(headerCheck?.status).toBe("mismatch");
   });
 
+  it("treats title-case 'Government Warning:' header as mismatch (not all caps)", () => {
+    const extracted: ExtractedLabelData = {
+      brandName: baseApplication.brandName,
+      classType: baseApplication.classType,
+      alcoholContent: baseApplication.alcoholContent,
+      netContents: baseApplication.netContents,
+      bottlerNameAddress: baseApplication.bottlerNameAddress,
+      countryOfOrigin: baseApplication.countryOfOrigin,
+      governmentWarningText:
+        "Government Warning: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
+      hasGovernmentWarningHeaderExact: false,
+      governmentWarningHeaderIsBold: false,
+    };
+
+    const checks = compareLabelData(baseApplication, extracted);
+    const headerCheck = checks.find(
+      (c) => c.field === "governmentWarningHeader",
+    );
+    expect(headerCheck?.status).toBe("mismatch");
+  });
+
   it("reports missing when a field is not on the label", () => {
     const extracted: ExtractedLabelData = {
       brandName: baseApplication.brandName,
       classType: baseApplication.classType,
       alcoholContent: baseApplication.alcoholContent,
       // netContents omitted
+      bottlerNameAddress: baseApplication.bottlerNameAddress,
+      countryOfOrigin: baseApplication.countryOfOrigin,
       governmentWarningText: STANDARD_GOVERNMENT_WARNING,
       hasGovernmentWarningHeaderExact: true,
+      governmentWarningHeaderIsBold: true,
     };
     const checks = compareLabelData(baseApplication, extracted);
     const netCheck = checks.find((c) => c.field === "netContents");
@@ -244,6 +297,8 @@ describe("compareLabelData", () => {
         classType: "Kentucky Straight Bourbon Whiskey",
         alcoholContent: "45%",
         netContents: "750 mL",
+        bottlerNameAddress: "",
+        countryOfOrigin: "",
         governmentWarning: STANDARD_GOVERNMENT_WARNING,
       },
       {
@@ -251,8 +306,11 @@ describe("compareLabelData", () => {
         classType: "Kentucky Straight",
         alcoholContent: "45%",
         netContents: "750 mL",
+        bottlerNameAddress: "",
+        countryOfOrigin: "",
         governmentWarningText: STANDARD_GOVERNMENT_WARNING,
         hasGovernmentWarningHeaderExact: true,
+        governmentWarningHeaderIsBold: true,
       },
     );
 
@@ -267,13 +325,59 @@ describe("compareLabelData", () => {
       classType: baseApplication.classType,
       alcoholContent: baseApplication.alcoholContent,
       netContents: baseApplication.netContents,
+      bottlerNameAddress: baseApplication.bottlerNameAddress,
+      countryOfOrigin: baseApplication.countryOfOrigin,
       governmentWarningText: STANDARD_GOVERNMENT_WARNING,
       hasGovernmentWarningHeaderExact: true,
+      governmentWarningHeaderIsBold: true,
     };
     const checks = compareLabelData(baseApplication, extracted);
     const brandCheck = checks.find((c) => c.field === "brandName");
     expect(brandCheck?.status).toBe("match");
     expect(brandCheck?.notes).toBeDefined();
     expect(brandCheck!.notes).toContain("% match");
+  });
+
+  it("compares bottler/producer name & address with fuzzy matching", () => {
+    const extracted: ExtractedLabelData = {
+      ...baseApplication,
+      governmentWarningText: STANDARD_GOVERNMENT_WARNING,
+      hasGovernmentWarningHeaderExact: true,
+      governmentWarningHeaderIsBold: true,
+      bottlerNameAddress: "Bottled by Stones Throw Distillery, Louisville KY",
+    };
+
+    const checks = compareLabelData(baseApplication, extracted);
+    expect(checks.find((c) => c.field === "bottlerNameAddress")?.status).toBe(
+      "match",
+    );
+  });
+
+  it("compares country of origin with high threshold", () => {
+    const extracted: ExtractedLabelData = {
+      ...baseApplication,
+      governmentWarningText: STANDARD_GOVERNMENT_WARNING,
+      hasGovernmentWarningHeaderExact: true,
+      governmentWarningHeaderIsBold: true,
+      countryOfOrigin: "United States",
+    };
+
+    const checks = compareLabelData(baseApplication, extracted);
+    expect(checks.find((c) => c.field === "countryOfOrigin")?.status).toBe(
+      "match",
+    );
+  });
+
+  it("validates GOVERNMENT WARNING header boldness separately", () => {
+    const extracted: ExtractedLabelData = {
+      ...baseApplication,
+      governmentWarningText: STANDARD_GOVERNMENT_WARNING,
+      hasGovernmentWarningHeaderExact: true,
+      governmentWarningHeaderIsBold: false,
+    };
+    const checks = compareLabelData(baseApplication, extracted);
+    expect(
+      checks.find((c) => c.field === "governmentWarningHeaderBold")?.status,
+    ).toBe("mismatch");
   });
 });
