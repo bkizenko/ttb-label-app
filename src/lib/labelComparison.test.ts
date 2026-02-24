@@ -83,8 +83,6 @@ describe("compareLabelData", () => {
       bottlerNameAddress: baseApplication.bottlerNameAddress,
       countryOfOrigin: baseApplication.countryOfOrigin,
       governmentWarningText: STANDARD_GOVERNMENT_WARNING,
-      hasGovernmentWarningHeaderExact: true,
-      governmentWarningHeaderIsBold: true,
     };
     const checks = compareLabelData(baseApplication, extracted);
     const brandCheck = checks.find((c) => c.field === "brandName");
@@ -102,8 +100,6 @@ describe("compareLabelData", () => {
       bottlerNameAddress: baseApplication.bottlerNameAddress,
       countryOfOrigin: baseApplication.countryOfOrigin,
       governmentWarningText: STANDARD_GOVERNMENT_WARNING,
-      hasGovernmentWarningHeaderExact: true,
-      governmentWarningHeaderIsBold: true,
     };
     const checks = compareLabelData(baseApplication, extracted);
     const netCheck = checks.find((c) => c.field === "netContents");
@@ -119,8 +115,6 @@ describe("compareLabelData", () => {
       bottlerNameAddress: baseApplication.bottlerNameAddress,
       countryOfOrigin: baseApplication.countryOfOrigin,
       governmentWarningText: STANDARD_GOVERNMENT_WARNING,
-      hasGovernmentWarningHeaderExact: true,
-      governmentWarningHeaderIsBold: true,
     };
     const checks = compareLabelData(baseApplication, extracted);
     expect(checks.find((c) => c.field === "netContents")?.status).toBe("match");
@@ -139,8 +133,6 @@ describe("compareLabelData", () => {
       bottlerNameAddress: baseApplication.bottlerNameAddress,
       countryOfOrigin: baseApplication.countryOfOrigin,
       governmentWarningText: STANDARD_GOVERNMENT_WARNING,
-      hasGovernmentWarningHeaderExact: true,
-      governmentWarningHeaderIsBold: true,
     };
     const checks = compareLabelData(app, extracted);
     expect(checks.find((c) => c.field === "alcoholContent")?.status).toBe(
@@ -161,8 +153,6 @@ describe("compareLabelData", () => {
       bottlerNameAddress: baseApplication.bottlerNameAddress,
       countryOfOrigin: baseApplication.countryOfOrigin,
       governmentWarningText: STANDARD_GOVERNMENT_WARNING,
-      hasGovernmentWarningHeaderExact: true,
-      governmentWarningHeaderIsBold: true,
     };
     const checks = compareLabelData(app, extracted);
     expect(checks.find((c) => c.field === "netContents")?.status).toBe(
@@ -183,8 +173,6 @@ describe("compareLabelData", () => {
       bottlerNameAddress: baseApplication.bottlerNameAddress,
       countryOfOrigin: baseApplication.countryOfOrigin,
       governmentWarningText: STANDARD_GOVERNMENT_WARNING,
-      hasGovernmentWarningHeaderExact: true,
-      governmentWarningHeaderIsBold: true,
     };
     const checks = compareLabelData(app, extracted);
     const brandCheck = checks.find((c) => c.field === "brandName");
@@ -204,8 +192,6 @@ describe("compareLabelData", () => {
       bottlerNameAddress: baseApplication.bottlerNameAddress,
       countryOfOrigin: baseApplication.countryOfOrigin,
       governmentWarningText: STANDARD_GOVERNMENT_WARNING,
-      hasGovernmentWarningHeaderExact: true,
-      governmentWarningHeaderIsBold: true,
     };
     const checks = compareLabelData(app, extracted);
     const brandCheck = checks.find((c) => c.field === "brandName");
@@ -221,15 +207,28 @@ describe("compareLabelData", () => {
       bottlerNameAddress: baseApplication.bottlerNameAddress,
       countryOfOrigin: baseApplication.countryOfOrigin,
       governmentWarningText: STANDARD_GOVERNMENT_WARNING,
-      hasGovernmentWarningHeaderExact: true,
-      governmentWarningHeaderIsBold: true,
     };
     const checks = compareLabelData(baseApplication, extracted);
     const alcCheck = checks.find((c) => c.field === "alcoholContent");
     expect(alcCheck?.status).toBe("mismatch");
   });
 
-  it("government warning requires exact/word-for-word match (no fuzzy)", () => {
+  it("government warning: missing text → status missing", () => {
+    const extracted: ExtractedLabelData = {
+      brandName: baseApplication.brandName,
+      classType: baseApplication.classType,
+      alcoholContent: baseApplication.alcoholContent,
+      netContents: baseApplication.netContents,
+      bottlerNameAddress: baseApplication.bottlerNameAddress,
+      countryOfOrigin: baseApplication.countryOfOrigin,
+      // governmentWarningText omitted → missing
+    };
+    const checks = compareLabelData(baseApplication, extracted);
+    const warningCheck = checks.find((c) => c.field === "governmentWarning");
+    expect(warningCheck?.status).toBe("missing");
+  });
+
+  it("government warning: different text → status mismatch", () => {
     const wrongWarning =
       "Government Warning: (1) According to the Surgeon General...";
     const extracted: ExtractedLabelData = {
@@ -240,19 +239,13 @@ describe("compareLabelData", () => {
       bottlerNameAddress: baseApplication.bottlerNameAddress,
       countryOfOrigin: baseApplication.countryOfOrigin,
       governmentWarningText: wrongWarning,
-      hasGovernmentWarningHeaderExact: false,
-      governmentWarningHeaderIsBold: false,
     };
     const checks = compareLabelData(baseApplication, extracted);
     const warningCheck = checks.find((c) => c.field === "governmentWarning");
-    const headerCheck = checks.find(
-      (c) => c.field === "governmentWarningHeader",
-    );
     expect(warningCheck?.status).toBe("mismatch");
-    expect(headerCheck?.status).toBe("mismatch");
   });
 
-  it("treats title-case 'Government Warning:' header as mismatch (not all caps)", () => {
+  it("government warning: exact match → status match", () => {
     const extracted: ExtractedLabelData = {
       brandName: baseApplication.brandName,
       classType: baseApplication.classType,
@@ -260,17 +253,11 @@ describe("compareLabelData", () => {
       netContents: baseApplication.netContents,
       bottlerNameAddress: baseApplication.bottlerNameAddress,
       countryOfOrigin: baseApplication.countryOfOrigin,
-      governmentWarningText:
-        "Government Warning: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
-      hasGovernmentWarningHeaderExact: false,
-      governmentWarningHeaderIsBold: false,
+      governmentWarningText: STANDARD_GOVERNMENT_WARNING,
     };
-
     const checks = compareLabelData(baseApplication, extracted);
-    const headerCheck = checks.find(
-      (c) => c.field === "governmentWarningHeader",
-    );
-    expect(headerCheck?.status).toBe("mismatch");
+    const warningCheck = checks.find((c) => c.field === "governmentWarning");
+    expect(warningCheck?.status).toBe("match");
   });
 
   it("reports missing when a field is not on the label", () => {
@@ -282,8 +269,6 @@ describe("compareLabelData", () => {
       bottlerNameAddress: baseApplication.bottlerNameAddress,
       countryOfOrigin: baseApplication.countryOfOrigin,
       governmentWarningText: STANDARD_GOVERNMENT_WARNING,
-      hasGovernmentWarningHeaderExact: true,
-      governmentWarningHeaderIsBold: true,
     };
     const checks = compareLabelData(baseApplication, extracted);
     const netCheck = checks.find((c) => c.field === "netContents");
@@ -306,11 +291,7 @@ describe("compareLabelData", () => {
         classType: "Kentucky Straight",
         alcoholContent: "45%",
         netContents: "750 mL",
-        bottlerNameAddress: "",
-        countryOfOrigin: "",
         governmentWarningText: STANDARD_GOVERNMENT_WARNING,
-        hasGovernmentWarningHeaderExact: true,
-        governmentWarningHeaderIsBold: true,
       },
     );
 
@@ -328,8 +309,6 @@ describe("compareLabelData", () => {
       bottlerNameAddress: baseApplication.bottlerNameAddress,
       countryOfOrigin: baseApplication.countryOfOrigin,
       governmentWarningText: STANDARD_GOVERNMENT_WARNING,
-      hasGovernmentWarningHeaderExact: true,
-      governmentWarningHeaderIsBold: true,
     };
     const checks = compareLabelData(baseApplication, extracted);
     const brandCheck = checks.find((c) => c.field === "brandName");
@@ -342,8 +321,6 @@ describe("compareLabelData", () => {
     const extracted: ExtractedLabelData = {
       ...baseApplication,
       governmentWarningText: STANDARD_GOVERNMENT_WARNING,
-      hasGovernmentWarningHeaderExact: true,
-      governmentWarningHeaderIsBold: true,
       bottlerNameAddress: "Bottled by Stones Throw Distillery, Louisville KY",
     };
 
@@ -357,8 +334,6 @@ describe("compareLabelData", () => {
     const extracted: ExtractedLabelData = {
       ...baseApplication,
       governmentWarningText: STANDARD_GOVERNMENT_WARNING,
-      hasGovernmentWarningHeaderExact: true,
-      governmentWarningHeaderIsBold: true,
       countryOfOrigin: "United States",
     };
 
@@ -368,16 +343,29 @@ describe("compareLabelData", () => {
     );
   });
 
-  it("validates GOVERNMENT WARNING header boldness separately", () => {
+  it("skips bottlerNameAddress check when form field is blank", () => {
+    const appWithBlankBottler: ApplicationLabelData = {
+      ...baseApplication,
+      bottlerNameAddress: "",
+    };
     const extracted: ExtractedLabelData = {
       ...baseApplication,
       governmentWarningText: STANDARD_GOVERNMENT_WARNING,
-      hasGovernmentWarningHeaderExact: true,
-      governmentWarningHeaderIsBold: false,
     };
-    const checks = compareLabelData(baseApplication, extracted);
-    expect(
-      checks.find((c) => c.field === "governmentWarningHeaderBold")?.status,
-    ).toBe("mismatch");
+    const checks = compareLabelData(appWithBlankBottler, extracted);
+    expect(checks.find((c) => c.field === "bottlerNameAddress")).toBeUndefined();
+  });
+
+  it("skips countryOfOrigin check when form field is blank", () => {
+    const appWithBlankCountry: ApplicationLabelData = {
+      ...baseApplication,
+      countryOfOrigin: "",
+    };
+    const extracted: ExtractedLabelData = {
+      ...baseApplication,
+      governmentWarningText: STANDARD_GOVERNMENT_WARNING,
+    };
+    const checks = compareLabelData(appWithBlankCountry, extracted);
+    expect(checks.find((c) => c.field === "countryOfOrigin")).toBeUndefined();
   });
 });

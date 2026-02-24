@@ -1,3 +1,5 @@
+export type BeverageType = "distilled_spirits" | "wine" | "beer" | "";
+
 export type ApplicationLabelData = {
   brandName: string;
   classType: string;
@@ -6,6 +8,7 @@ export type ApplicationLabelData = {
   bottlerNameAddress: string;
   countryOfOrigin: string;
   governmentWarning: string;
+  beverageType?: BeverageType;
 };
 
 export type ExtractedLabelData = {
@@ -16,8 +19,6 @@ export type ExtractedLabelData = {
   bottlerNameAddress?: string;
   countryOfOrigin?: string;
   governmentWarningText?: string;
-  hasGovernmentWarningHeaderExact?: boolean;
-  governmentWarningHeaderIsBold?: boolean;
 };
 
 export type FieldCheckStatus = "match" | "mismatch" | "missing";
@@ -25,8 +26,6 @@ export type FieldCheckStatus = "match" | "mismatch" | "missing";
 export type FieldCheck = {
   field:
     | keyof ApplicationLabelData
-    | "governmentWarningHeader"
-    | "governmentWarningHeaderBold"
     | "alcoholContentFormat";
   status: FieldCheckStatus;
   expected?: string;
@@ -296,12 +295,11 @@ export const compareLabelData = (
     });
   }
 
-  // Bottler/producer name + address: fuzzy
-  {
+  // Bottler/producer name + address: fuzzy — skip if form field is blank
+  if (application.bottlerNameAddress?.trim()) {
     const expectedRaw = application.bottlerNameAddress;
     const actualRaw = extracted.bottlerNameAddress;
-    const expected =
-      typeof expectedRaw === "string" ? normalizeWhitespace(expectedRaw) : "";
+    const expected = normalizeWhitespace(expectedRaw);
     const actual =
       typeof actualRaw === "string" ? normalizeWhitespace(actualRaw) : "";
 
@@ -317,12 +315,11 @@ export const compareLabelData = (
     }
   }
 
-  // Country of origin (imports): fuzzy
-  {
+  // Country of origin (imports): fuzzy — skip if form field is blank
+  if (application.countryOfOrigin?.trim()) {
     const expectedRaw = application.countryOfOrigin;
     const actualRaw = extracted.countryOfOrigin;
-    const expected =
-      typeof expectedRaw === "string" ? normalizeWhitespace(expectedRaw) : "";
+    const expected = normalizeWhitespace(expectedRaw);
     const actual =
       typeof actualRaw === "string" ? normalizeWhitespace(actualRaw) : "";
 
@@ -338,6 +335,8 @@ export const compareLabelData = (
     }
   }
 
+  // Government warning: single consolidated check (text comparison only — reliable)
+  // Removes the AI-dependent header/bold boolean checks that caused run-to-run inconsistency.
   const expectedWarning = normalizeWhitespace(application.governmentWarning);
   const actualWarning = extracted.governmentWarningText
     ? normalizeWhitespace(extracted.governmentWarningText)
@@ -348,12 +347,13 @@ export const compareLabelData = (
       field: "governmentWarning",
       status: "missing",
       expected: expectedWarning,
-      notes: "Government warning text not clearly detected",
+      notes:
+        "Government warning not detected on this image. Per 27 CFR § 16.21, all alcohol labels must display the complete warning statement with 'GOVERNMENT WARNING:' in all caps and bold.",
+      noteHref: "https://www.ecfr.gov/current/title-27/chapter-I/subchapter-A/part-16",
     });
   } else {
     const expectedNormalized = normalizeForLooseMatch(expectedWarning);
     const actualNormalized = normalizeForLooseMatch(actualWarning);
-
     const isMatch = expectedNormalized === actualNormalized;
 
     checks.push({
@@ -361,39 +361,16 @@ export const compareLabelData = (
       status: isMatch ? "match" : "mismatch",
       expected: expectedWarning,
       actual: actualWarning,
-      notes: !isMatch
-        ? "Warning text must match word-for-word; agent should review."
-        : undefined,
+      notes: isMatch
+        ? undefined
+        : "Warning text must match exactly. Verify 'GOVERNMENT WARNING:' appears in all caps and bold per 27 CFR § 16.21.",
+      noteHref: isMatch
+        ? undefined
+        : "https://www.ecfr.gov/current/title-27/chapter-I/subchapter-A/part-16",
     });
   }
-
-  checks.push({
-    field: "governmentWarningHeader",
-    status: extracted.hasGovernmentWarningHeaderExact ? "match" : "mismatch",
-    expected: "GOVERNMENT WARNING:",
-    actual: extracted.hasGovernmentWarningHeaderExact
-      ? "GOVERNMENT WARNING:"
-      : "Not found exactly as 'GOVERNMENT WARNING:'",
-    notes:
-      "Header must appear in all caps per 27 CFR Part 16.",
-    noteHref: "https://www.ecfr.gov/current/title-27/chapter-I/subchapter-A/part-16",
-  });
-
-  const bold = extracted.governmentWarningHeaderIsBold;
-  checks.push({
-    field: "governmentWarningHeaderBold",
-    status: bold === true ? "match" : bold === false ? "mismatch" : "missing",
-    expected: "Bold",
-    actual: bold === true ? "Bold" : bold === false ? "Not bold" : "Not detected",
-    notes:
-      bold == null
-        ? "Bold styling not detected by OCR."
-        : "Header must be bold per 27 CFR Part 16.",
-    noteHref: "https://www.ecfr.gov/current/title-27/chapter-I/subchapter-A/part-16",
-  });
 
   return checks;
 };
 
 export const STANDARD_GOVERNMENT_WARNING = `GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.`;
-
