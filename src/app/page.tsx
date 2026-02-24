@@ -34,6 +34,7 @@ const defaultApplicationData: ApplicationLabelData = {
   bottlerNameAddress: "",
   countryOfOrigin: "",
   governmentWarning: STANDARD_GOVERNMENT_WARNING,
+  beverageType: "distilled_spirits",
 };
 
 const extractFromOcrText = (text: string): ExtractedLabelData => {
@@ -185,7 +186,7 @@ const extractFromOcrText = (text: string): ExtractedLabelData => {
           .trim()
       : undefined;
 
-  const hasExactHeader = /GOVERNMENT WARNING[.:]/.test(text);
+
 
   return {
     brandName,
@@ -193,8 +194,6 @@ const extractFromOcrText = (text: string): ExtractedLabelData => {
     alcoholContent,
     netContents,
     governmentWarningText: warningText,
-    hasGovernmentWarningHeaderExact: hasExactHeader,
-    governmentWarningHeaderIsBold: undefined,
   };
 };
 
@@ -231,19 +230,6 @@ async function ocrImage(
     const parsed = JSON.parse(text) as Record<string, unknown>;
     const strip = (s: string) => s.replace(/\s+/g, " ").trim();
 
-    const headerAllCaps =
-      parsed.isGovernmentWarningHeaderAllCaps === true
-        ? true
-        : parsed.isGovernmentWarningHeaderAllCaps === false
-          ? false
-          : undefined;
-    const headerBold =
-      parsed.isGovernmentWarningHeaderBold === true
-        ? true
-        : parsed.isGovernmentWarningHeaderBold === false
-          ? false
-          : undefined;
-
     const extracted: ExtractedLabelData = {
       brandName: typeof parsed.brandName === "string" ? strip(parsed.brandName) : undefined,
       classType: typeof parsed.classType === "string" ? strip(parsed.classType) : undefined,
@@ -262,8 +248,6 @@ async function ocrImage(
         typeof parsed.governmentWarningText === "string"
           ? strip(parsed.governmentWarningText)
           : undefined,
-      hasGovernmentWarningHeaderExact: headerAllCaps === true,
-      governmentWarningHeaderIsBold: headerBold,
     };
 
     return { text, extracted };
@@ -739,7 +723,7 @@ export default function Home() {
       <div
         className={`mb-6 flex items-center gap-3 ${isStep1 ? "step1-progress-in" : ""}`}
       >
-        <span className="text-sm font-semibold text-[#1C1C1E]">
+        <span className="text-[17px] font-bold text-[#1C1C1E]">
           {step === 1 && "Step 1 of 3"}
           {step === 2 && "Step 2 of 3"}
           {step === 3 && "Step 3 of 3"}
@@ -835,10 +819,10 @@ export default function Home() {
                 📸
               </div>
               <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-[#1C1C1E]">
+                <h1 className="text-[32px] font-bold tracking-tight text-[#1C1C1E]">
                   Upload label image
                 </h1>
-                <p className="mt-1 text-[16px] text-[#8E8E93]">
+                <p className="mt-1 text-[20px] text-[#8E8E93]">
                   Select one or more label images
                 </p>
               </div>
@@ -1045,10 +1029,10 @@ export default function Home() {
                 📝
               </div>
               <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-[#1C1C1E]">
+                <h1 className="text-[32px] font-bold tracking-tight text-[#1C1C1E]">
                   Enter application data
                 </h1>
-                <p className="mt-1 text-[16px] text-[#8E8E93]">
+                <p className="mt-1 text-[20px] text-[#8E8E93]">
                   Enter the fields from the approved COLA application record for this label.
                 </p>
               </div>
@@ -1102,6 +1086,32 @@ export default function Home() {
                 >
                   Application record
                 </p>
+
+                <div className="step2-field-in space-y-1.5">
+                  <label
+                    htmlFor="beverage-type"
+                    className="block text-[14px] font-medium text-[#8E8E93]"
+                  >
+                    Beverage type
+                  </label>
+                  <select
+                    id="beverage-type"
+                    value={applicationData.beverageType ?? ""}
+                    onChange={(event) =>
+                      setApplicationData((current) => ({
+                        ...current,
+                        beverageType: event.target.value as ApplicationLabelData["beverageType"],
+                      }))
+                    }
+                    className="input-apple h-14 w-full rounded-[16px] border border-[#E5E5EA] bg-white px-4 text-[16px] text-[#1C1C1E]"
+                    style={{ minHeight: "56px" }}
+                  >
+                    <option value="">Select type…</option>
+                    <option value="distilled_spirits">Distilled Spirits</option>
+                    <option value="wine">Wine</option>
+                    <option value="beer">Beer / Malt Beverage</option>
+                  </select>
+                </div>
 
                 <div
                   className="step2-field-in"
@@ -1586,10 +1596,10 @@ export default function Home() {
                 ✓
               </div>
               <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-[#1C1C1E]">
+                <h1 className="text-[32px] font-bold tracking-tight text-[#1C1C1E]">
                   Comparison results
                 </h1>
-                <p className="mt-1 text-[16px] text-[#8E8E93]">
+                <p className="mt-1 text-[20px] text-[#8E8E93]">
                   Review how the label matches the application data.
                 </p>
               </div>
@@ -1812,10 +1822,9 @@ export default function Home() {
                     netContents: "Net contents",
                     bottlerNameAddress: "Bottler/Producer name & address",
                     countryOfOrigin: "Country of origin",
-                    governmentWarning: "Government warning text",
-                    governmentWarningHeader: "GOVERNMENT WARNING header (all caps)",
-                    governmentWarningHeaderBold: "GOVERNMENT WARNING header (bold)",
+                    governmentWarning: "Government warning",
                     alcoholContentFormat: "Alcohol content abbreviation",
+                    beverageType: "Beverage type",
                   };
                   const fieldsNeedingReview = activeResult.checks.filter(
                     (c) =>
@@ -1889,7 +1898,55 @@ export default function Home() {
                               </p>
                             </div>
                           </div>
-                          <div className="mt-8 flex flex-col gap-4">
+                          {/* Per-field scorecard */}
+                          <div className="mt-6 flex flex-col gap-2">
+                            {activeResult.checks.map((check) => {
+                              const label = FIELD_LABEL_MAP[check.field] ?? check.field;
+                              const icon =
+                                check.status === "match"
+                                  ? "✓"
+                                  : check.status === "missing"
+                                  ? "✗"
+                                  : "⚠";
+                              const color =
+                                check.status === "match"
+                                  ? "#30D158"
+                                  : check.status === "missing"
+                                  ? "#FF3B30"
+                                  : "#FF9500";
+                              return (
+                                <div
+                                  key={check.field}
+                                  className="flex items-center gap-3 rounded-[12px] bg-white px-4 py-3"
+                                  style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}
+                                >
+                                  <span
+                                    className="text-[18px] font-bold leading-none"
+                                    style={{ color, minWidth: "20px" }}
+                                    aria-hidden
+                                  >
+                                    {icon}
+                                  </span>
+                                  <span className="text-[15px] font-medium text-[#1C1C1E]">
+                                    {label}
+                                  </span>
+                                  {check.status !== "match" && (
+                                    <span
+                                      className="ml-auto rounded-full px-2 py-0.5 text-[12px] font-semibold"
+                                      style={{
+                                        background: check.status === "missing" ? "#FFEBEB" : "#FFF4E5",
+                                        color: check.status === "missing" ? "#FF3B30" : "#FF9500",
+                                      }}
+                                    >
+                                      {check.status === "missing" ? "Missing" : "Review"}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          <div className="mt-6 flex flex-col gap-4">
                             {anyIssue ? (
                               <button
                                 type="button"
@@ -1994,7 +2051,50 @@ export default function Home() {
                             />
                           )}
 
-                          {currentCheck.status === "mismatch" ? (
+                          {currentCheck.field === "governmentWarning" && currentCheck.status === "missing" ? (
+                            <>
+                              <div
+                                role="alert"
+                                className="rounded-[16px] p-6"
+                                style={{
+                                  background: "#FFEBEB",
+                                  borderLeft: "6px solid #FF3B30",
+                                }}
+                              >
+                                <p className="text-[28px]" aria-hidden>⚠️</p>
+                                <h3 className="mt-2 text-[22px] font-bold text-[#D70015]" style={{ letterSpacing: "-0.01em" }}>
+                                  CRITICAL: Government Warning Required
+                                </h3>
+                                <p className="mt-3 text-[17px] leading-relaxed text-[#3C3C43]">
+                                  No government health warning was detected on this label. Federal law (27 CFR § 16.21) requires all alcohol labels to display:
+                                </p>
+                                <pre
+                                  className="mt-4 overflow-x-auto rounded-[12px] border-2 border-[#FF3B30] bg-white p-4 text-[14px] leading-relaxed text-black"
+                                  style={{ fontFamily: "'SF Mono', 'Monaco', 'Courier New', monospace", whiteSpace: "pre-wrap" }}
+                                >
+                                  {STANDARD_GOVERNMENT_WARNING}
+                                </pre>
+                                <p className="mt-3 text-[15px] italic text-[#3C3C43]">
+                                  The header must appear as "GOVERNMENT WARNING:" in all caps and bold.
+                                </p>
+                              </div>
+                              <div className="mt-6 flex flex-col gap-4">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (isLastField) {
+                                      setReviewMode("complete");
+                                    } else {
+                                      setCurrentReviewIndex((i) => i + 1);
+                                    }
+                                  }}
+                                  className="flex min-h-[56px] w-full items-center justify-center rounded-[24px] bg-[#FF3B30] px-6 py-4 text-[17px] font-semibold text-white transition-transform duration-150 active:scale-[0.97]"
+                                >
+                                  Acknowledge &amp; Continue
+                                </button>
+                              </div>
+                            </>
+                          ) : currentCheck.status === "mismatch" ? (
                             <>
                               <p
                                 className="text-[22px] font-semibold text-[#1C1C1E]"

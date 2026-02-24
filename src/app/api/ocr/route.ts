@@ -8,21 +8,19 @@ Return ONLY valid JSON (no markdown fences, no commentary). If a field is not vi
 
 Schema:
 {
-  "brandName": "string",
-  "classType": "string",
-  "alcoholContent": "string",
-  "netContents": "string",
+  "brandName": "string or null",
+  "classType": "string or null",
+  "alcoholContent": "string or null",
+  "netContents": "string or null",
   "bottlerNameAddress": "string or null",
   "countryOfOrigin": "string or null",
-  "governmentWarningText": "string or null",
-  "isGovernmentWarningHeaderAllCaps": "boolean",
-  "isGovernmentWarningHeaderBold": "boolean"
+  "governmentWarningText": "string or null"
 }
 
 Rules:
 - Preserve the label's wording exactly for governmentWarningText.
 - brandName should be the complete brand name exactly as printed (include all words).
-- If government warning is not visible, set governmentWarningText to null and booleans to false.`;
+- If a field is not visible on the label, set it to null.`;
 
 export async function POST(req: NextRequest) {
   const t0 = Date.now();
@@ -50,17 +48,17 @@ export async function POST(req: NextRequest) {
   const tAfterBody = Date.now();
   console.log("[OCR] body parsed", tAfterBody - t0, "ms");
 
-  const payloadBase64 = imageBase64;
-  const payloadMimeType = mimeType;
-
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.5-flash",
+    generationConfig: { temperature: 0 },
+  });
 
   const apiStart = Date.now();
   let rawText: string;
   try {
     const result = await model.generateContent([
-      { inlineData: { data: payloadBase64, mimeType: payloadMimeType } },
+      { inlineData: { data: imageBase64, mimeType } },
       OCR_PROMPT,
     ]);
     rawText = result.response.text() ?? "";
@@ -94,19 +92,6 @@ export async function POST(req: NextRequest) {
       typeof parsed.countryOfOrigin === "string"
         ? stripNewlines(parsed.countryOfOrigin)
         : undefined;
-    const headerBold =
-      parsed.isGovernmentWarningHeaderBold === true
-        ? true
-        : parsed.isGovernmentWarningHeaderBold === false
-          ? false
-          : undefined;
-    const headerAllCaps =
-      parsed.isGovernmentWarningHeaderAllCaps === true
-        ? true
-        : parsed.isGovernmentWarningHeaderAllCaps === false
-          ? false
-          : undefined;
-    const hasGovernmentWarningHeaderExact = headerAllCaps === true;
 
     extracted = {
       brandName:
@@ -128,8 +113,6 @@ export async function POST(req: NextRequest) {
       bottlerNameAddress,
       countryOfOrigin,
       governmentWarningText: govWarning,
-      hasGovernmentWarningHeaderExact,
-      governmentWarningHeaderIsBold: headerBold,
     };
   } catch {
     console.log("[OCR] JSON parse failed, returning raw text only");
