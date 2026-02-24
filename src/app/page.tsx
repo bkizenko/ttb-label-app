@@ -333,7 +333,22 @@ export default function Home() {
   const [progressCardDismissed, setProgressCardDismissed] = useState(false);
   const [processingCurrentDebounced, setProcessingCurrentDebounced] =
     useState(0);
+  const [processingPreviewUrl, setProcessingPreviewUrl] = useState<
+    string | null
+  >(null);
   const processingThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (isProcessing && fileList.length > 0) {
+      const url = URL.createObjectURL(fileList[0]);
+      setProcessingPreviewUrl(url);
+      return () => {
+        URL.revokeObjectURL(url);
+        setProcessingPreviewUrl(null);
+      };
+    }
+    setProcessingPreviewUrl(null);
+  }, [isProcessing, fileList]);
 
   const handleFilesSelected = (files: FileList | null) => {
     if (!files) return;
@@ -1171,18 +1186,43 @@ export default function Home() {
         </div>
         {isProcessing && fileList.length === 1 && (
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-[#F5F7FA]/90"
+            className="animate-loading-screen-in fixed inset-0 z-50 flex flex-col items-center overflow-y-auto bg-[#F5F7FA] px-4 pt-12 pb-10"
             aria-live="polite"
             aria-busy="true"
           >
-            <div className="flex flex-col items-center gap-4">
-              <span
-                className="h-5 w-5 animate-spin rounded-full border-2 border-[#007AFF] border-t-transparent"
-                aria-hidden
-              />
-              <span className="text-[17px] font-semibold text-[#1C1C1E]">
-                Processing...
-              </span>
+            <div className="animate-loading-content-in flex flex-col items-center">
+              {processingPreviewUrl ? (
+                <img
+                  src={processingPreviewUrl}
+                  alt=""
+                  className="h-[200px] w-auto max-w-[280px] shrink-0 object-contain rounded-[20px] depth-1 bg-white"
+                />
+              ) : (
+                <div className="h-[200px] w-[280px] shrink-0 rounded-[20px] bg-[#E5E5EA] depth-1" />
+              )}
+              <p className="mt-5 text-[17px] font-semibold text-[#1C1C1E]">
+                Analyzing label...
+              </p>
+            </div>
+            <div className="animate-loading-content-in mx-auto mt-8 flex w-full max-w-[600px] flex-col gap-4" style={{ animationDelay: "0.15s" }}>
+              {[
+                "Brand name",
+                "Class/Type",
+                "Alcohol content",
+                "Net contents",
+                "Government warning text",
+                "GOVERNMENT WARNING header",
+              ].map((label) => (
+                <div key={label} className="flex flex-col gap-2">
+                  <span className="text-[14px] font-medium text-[#8E8E93]">
+                    {label}
+                  </span>
+                  <div
+                    className="skeleton-shimmer h-12 w-full rounded-[16px]"
+                    aria-hidden
+                  />
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -1384,7 +1424,10 @@ export default function Home() {
           </>
         )}
       <div className="min-h-screen depth-0 text-[#1C1C1E]">
-        <div className="mx-auto flex max-w-5xl flex-col gap-10 px-4 py-10">
+        <div
+          className="animate-fade-scale-in mx-auto flex max-w-5xl flex-col gap-10 px-4 py-10"
+          style={{ animationDuration: "0.55s", animationTimingFunction: "ease-out" }}
+        >
           <header className="space-y-2">
             {renderProgress()}
             <div className="flex items-center gap-3">

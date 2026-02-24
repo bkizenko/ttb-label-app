@@ -1,249 +1,301 @@
-# TTB Label Verification App — Evaluation Audit
+# Evaluation Audit — TTB Label Verification App
 
-This audit is against the **Take-Home Project: AI-Powered Alcohol Label Verification App** requirements and stakeholder context.
-
----
-
-## 0. Project Requirements (Source Summary)
-
-**Stakeholder context (from discovery notes):**
-
-| Stakeholder | Role | Key requirements |
-|-------------|------|------------------|
-| **Sarah Chen** | Deputy Director, Label Compliance | 5–10 min per application for simple ones; **results in ~5 seconds or “nobody will use it”** (pilot failed at 30–40 sec/label); **“something my mother could figure out”** (73, low tech); **batch uploads** for big importers (200–300 labels); 47 agents, half over 50. |
-| **Dave Morrison** | Senior Compliance Agent (28 yrs) | **Nuance/judgment:** e.g. **“STONE'S THROW” on label vs “Stone's Throw” in application** — obviously same thing; don’t over-reject on formatting. |
-| **Jenny Park** | Junior Compliance Agent | **Warning statement must be exact — word-for-word;** “GOVERNMENT WARNING:” **all caps and bold**; reject if “Government Warning” in title case. |
-| **Janet** (Seattle) | — | **Batch processing** for large label drops (called out in Sarah’s notes). |
-| **Marcus Williams** | IT Systems Admin | **No cloud APIs** — firewall blocks outbound to many domains; pilot failed when ML endpoints were blocked. Prototype = standalone, no COLA integration; no sensitive storage. |
-
-**TTB label elements (from requirements):** Brand name, Class/type, Alcohol content (exceptions for some wine/beer), Net contents, Bottler/producer, Country of origin (imports), **Government Health Warning Statement** (mandatory).
-
-**Sample label (distilled spirits):** Brand "OLD TOM DISTILLERY", Class/Type "Kentucky Straight Bourbon Whiskey", 45% Alc./Vol. (90 Proof), 750 mL, standard government warning.
-
-**Deliverables (from requirements):** Source code repo; README (setup, run, approach, tools, assumptions); **Deployed application URL**; working prototype evaluators can access and test.
-
-**Evaluation criteria (verbatim):** (1) Correctness and completeness of core requirements; (2) Code quality and organization; (3) Appropriate technical choices for the scope; (4) User experience and error handling; (5) Attention to requirements; (6) Creative problem-solving. "Working core with clean code preferred over ambitious but incomplete. Document trade-offs and limitations."
+Audited: 2026-02-24  
+Reviewer posture: Senior engineer evaluating a take-home submission
 
 ---
 
-## 1. Executive Summary
+## 1. PASS / FAIL AUDIT
 
-The app delivers the core workflow (upload → application data → OCR → comparison → one-at-a-time review) with strong comparison logic (fuzzy + numeric + substring matching), no cloud dependencies, and good accessibility touches (aria-live, keyboard shortcuts, sr-only). It directly addresses **Sarah’s** speed and “mother could use it” bar, **Dave’s** STONE'S THROW–style fuzzy matching, **Jenny’s** strict warning check and header flexibility, **Janet’s** batch need, and **Marcus’s** no–cloud constraint. **Major gaps:** ~330 lines of dead fallback UI, debug `console.log` in production code, layout metadata still "Create Next App", no Error Boundary, README’s “Show raw OCR text” no longer in UI, and **Deployed Application URL** not referenced in README. **Recommendation:** Remove dead code, strip console logs, fix metadata and README (including deploy URL if available), and add one test for substring matching so the submission reads as intentional and production-ready.
+| # | Requirement | Verdict | Evidence |
+|---|-------------|---------|----------|
+| 1 | OCR extracts brand name accurately and completely | **PASS (weak)** | Gemini 2.5 Flash does the heavy OCR lifting. Client-side `extractFromOcrText` then guesses the brand from the first 3 non-type-keyword lines — fragile heuristic, but works for typical labels. |
+| 2 | OCR extracts class/type designation | **PASS** | Keyword list of ~30 beverage types matched against OCR text. Falls back to individual word detection. Covers common types. |
+| 3 | OCR extracts alcohol content | **PASS** | Regex handles both `XX% Alc./Vol.` and `XX Proof` patterns. Includes OCR-error correction hacks (`BE` → `4`, `B5` → `85`). |
+| 4 | OCR extracts net contents | **PASS** | Regex matches `\d+ (mL|L|FL OZ|oz)` patterns. |
+| 5 | OCR extracts name and address of bottler/producer | **FAIL** | Field does not exist in `ApplicationLabelData`, `ExtractedLabelData`, the extraction logic, the comparison logic, or the UI. Completely absent. |
+| 6 | OCR extracts country of origin for imports | **FAIL** | Same — not in the data model, extraction, comparison, or UI at all. |
+| 7 | Government warning extracted word-for-word | **PASS** | Slices raw OCR text from the `GOVERNMENT WARNING` index forward (up to 400 chars). Compared with `normalizeForLooseMatch` which strips punctuation/spacing but preserves word content. |
+| 8 | "GOVERNMENT WARNING:" validated as all caps | **FAIL** | `page.tsx:186` — regex is `/GOVERNMENT WARNING[.:]/i`. The **`i` flag makes it case-insensitive**, so `"Government Warning:"` (title case — exactly the rejection case Jenny described) passes validation. The `i` flag must be removed. |
+| 9 | "GOVERNMENT WARNING:" validated as bold | **FAIL** | Code acknowledges "bold styling cannot be detected from OCR" but does nothing about it. Gemini is a vision model — the prompt could ask "Is the text 'GOVERNMENT WARNING:' rendered in bold?" but this is not attempted. |
+| 10 | Comparison: brand name is case-insensitive match | **PASS** | `normalizeForComparison` lowercases + strips punctuation. `STONE'S THROW` vs `Stone's Throw` → 100% similarity. Tested. |
+| 11 | Comparison: numeric fields (ABV, net contents) exact match | **PASS (weak)** | `normalizeNumeric` strips non-digits → exact comparison. But when that fails, falls through to **fuzzy matching at 90% threshold** — not "exact". Practical risk is low (test suite confirms 45% vs 40% is a mismatch), but the fallback path is technically not exact. |
+| 12 | Comparison: government warning character-for-character exact | **PASS (weak)** | `normalizeForLooseMatch` strips ALL non-alphanumeric chars and uppercases. This means `"warning."` vs `"warning"` are identical. Tolerant of OCR noise but not truly character-for-character. Acceptable tradeoff given OCR reality. |
+| 13 | Results returned in under 5 seconds | **PASS (likely)** | Uses Gemini API with streaming. Typical single-label response is 2-5s depending on image size and API latency. Cannot guarantee <5s for large images or during API congestion. |
+| 14 | UI simple enough for non-technical users | **PASS** | 3-step wizard. Apple HIG-inspired design. Large touch targets (56px buttons, 44px min). Screen reader announcements. Keyboard shortcuts. Clean visual hierarchy. |
+| 15 | Batch upload for 200-300 labels | **PASS (weak)** | Multi-file upload works. Sequential processing with progress bar. But: (a) processes labels one-at-a-time with no parallelism — 300 labels × 3-5s each = 15-25 minutes, (b) batch application data requires pasting raw JSON, (c) Gemini API rate limits not handled. |
+| 16 | Handles poor quality images | **PASS (weak)** | Gemini handles moderate quality issues (angles, lighting). Failed OCR results get a friendly "Couldn't read this label" card with options to retry, replace image, or skip. No image preprocessing (rotation, contrast enhancement). |
+| 17 | Error handling — graceful failures, not crashes | **PASS** | OCR failures caught per-label, don't stop batch. Catastrophic error modal with retry. File type validation. Invalid JSON handling. No uncaught promise rejections. |
+| 18 | README with setup, approach, tools, assumptions | **FAIL** | README exists and is detailed, but **actively lies about the tech stack**. Claims "OCR is done on-device using `tesseract.js`" (lines 22, 101-103) — the actual code uses Gemini API via a server route. `tesseract.js` is not in `package.json`. An evaluator who reads the README then inspects the code will question the candidate's honesty or attention to detail. |
+| 19 | Code quality — clean, organized, well-structured | **FAIL** | `page.tsx` is **2,001 lines** — a single React component containing all state (20+ useState hooks), all UI for 3 wizard steps, all OCR logic, all parsing heuristics, all keyboard handling, and all batch processing. No component decomposition. No custom hooks. The comparison logic (`labelComparison.ts`) is properly separated, but the main page is the opposite of "clean, organized, well-structured." |
+| 20 | Deployed and working at Vercel URL | **PASS (assumed)** | Vercel config present. README links to `https://ttb-label-p9mg5uf7r-bkizenkos-projects.vercel.app/`. Requires `GEMINI_API_KEY` env var to be set on Vercel. |
 
----
-
-## 2. Detailed Findings by Criterion
-
-### [1] Correctness and Completeness of Core Requirements
-
-✅ **What's Working:**
-- **Upload (single + batch):** `fileList` state, `handleFilesSelected`, batch/single mode; multiple files supported (`page.tsx`).
-- **Application data entry:** Full form for brand, class/type, alcohol, net contents, government warning; batch JSON parsing with last-record reuse (`parsedBatchData`, `applicationData`).
-- **OCR extraction:** `extractFromOcrText` with multi-version text (cleanText, singleLine, allCaps), keyword + fallback for class/type, proof-first ABV, net-contents regex, government warning slice (`page.tsx` ~37–197). Preprocessing: 2x scale, contrast, grayscale (`preprocessImageForOCR`).
-- **Field comparison:** All five fields + header in `compareLabelData`: brand (fuzzy 85%), class (fuzzy 85% + substring fallback), alcohol/net (numeric then fuzzy 90%), government warning (loose normalized, no fuzzy), header (exact) (`labelComparison.ts`).
-- **Results display:** Step 3 summary card → one-at-a-time review (match/mismatch/missing) with progress, label image, actions (Accept Match / Flag for Review / Continue), completion screen with Export + Next Label / Check Another (`page.tsx` ~1287+).
-- **Agent review:** Accept Match, Flag for Review, manual input for missing, then continue; no auto-reject of partial reads for class/type.
-- **Processing speed:** Single worker, one preprocess + one recognize per image; progress message and duration logged; typical run is within “few seconds per label” for normal images.
-- **Accessibility:** Step announcements (`aria-live`, `sr-only`), Escape to go back, Enter to run (step 2), Arrow keys for label nav (step 3), focus management, aria-labels on controls (`page.tsx`).
-
-❌ **What's Missing/Broken:**
-- **README vs UI:** README says “expand ‘Show raw OCR text’ for troubleshooting” but the one-at-a-time flow has no raw OCR display; data is in `rawOcrText` on results but not exposed in UI.
-- **Run verification disabled when brand empty:** Submit is `disabled={... || !applicationData.brandName.trim()}` — requirement may allow optional brand in some flows; currently strict.
-- **No explicit “under 5 seconds” guarantee in UI:** README says “around a few seconds”; no per-label timing displayed in batch (only in completion “Processed in X seconds” for single).
-
-🔧 **Recommended Fixes (Priority Order):**
-1. **High:** Add a way to view raw OCR in Step 3 (e.g. “Troubleshoot” collapsible with raw text) or update README to say raw OCR is in console only (`page.tsx`, README.md).
-2. **Medium:** Document or relax “Run verification” disable rule if product allows empty brand (`page.tsx` ~1110).
-3. **Low:** Show per-label duration in batch progress or completion to align with “under 5 seconds” (optional).
+**Score: 12 PASS, 5 FAIL, 3 PASS-weak-enough-to-be-concerning**
 
 ---
 
-### [2] Code Quality and Organization
+## 2. TOP 5 FAILURES (ranked by severity)
 
-✅ **What's Working:**
-- **TypeScript:** No `any` in `src/`; proper types for `ApplicationLabelData`, `ExtractedLabelData`, `FieldCheck`, `VerificationResult`, `Mode`.
-- **Naming:** Consistent (`applicationData`, `extractFromOcrText`, `compareLabelData`, `fieldsNeedingReview`, `reviewMode`).
-- **labelComparison.ts:** Focused module; small helpers (`normalizeForComparison`, `similarityScore`, `normalizeNumeric`, `isSubstringMatch`, `pushFuzzyCheck`); functions under ~50 lines.
-- **Tests:** 21 tests in `labelComparison.test.ts` for normalization, similarity, and `compareLabelData` edge cases; all passing.
+### 1. Two required TTB fields completely missing (name/address, country of origin)
 
-❌ **What's Missing/Broken:**
-- **console.log in production:** Two instances: `console.log("RAW OCR TEXT:", ocrText)` in batch and single run (`page.tsx` ~455, ~520). Must be removed or gated (e.g. `process.env.NODE_ENV === 'development'`).
-- **Dead code:** Large fallback return (~1985–2313) renders a different “Step 1 of 2 / Step 2 of 2” UI that is never reached because `step` is always `1 | 2 | 3`. ~330 lines of dead code; looks like an old version left in.
-- **Single huge component:** `page.tsx` is 2300+ lines; `Home` does everything (upload, form, OCR, results, modals, batch). Hard to maintain; no extraction of steps or review flow into subcomponents.
-- **Complex inline JSX:** Step 3 uses a large IIFE `(() => { ... })()` for summary/review/complete branches; works but reduces readability.
-- **Comments:** Little commenting for non-obvious logic (e.g. substring match 40% threshold, numeric normalization for alcohol/net).
+**Severity: CRITICAL — immediate disqualification risk**
 
-🔧 **Recommended Fixes (Priority Order):**
-1. **High:** Remove or guard the two `console.log("RAW OCR TEXT:", ...)` calls (`page.tsx`).
-2. **High:** Delete the unreachable fallback UI (the `return (...)` block after the `if (step === 3)` block, ~1985–2313) to avoid confusion and reduce bundle size.
-3. **Medium:** Split `Home` into smaller components (e.g. `Step1Upload`, `Step2Form`, `Step3Results`, `ReviewCard`) or at least extract the Step 3 state machine into a custom hook.
-4. **Low:** Add short comments for substring-match threshold and numeric-normalization intent in `labelComparison.ts` and extraction in `page.tsx`.
+The project requirements explicitly list "Name and address of bottler/producer" and "Country of origin for imports" as required fields. They are not in the data model, not extracted, not compared, and not in the UI. An evaluator checking requirements against code will see two checkboxes that can't be ticked. This signals incomplete reading of the requirements.
 
----
+### 2. README lies about the technology stack
 
-### [3] Appropriate Technical Choices for the Scope
+**Severity: HIGH — credibility destroyer**
 
-✅ **What's Working:**
-- **Next.js + React + TypeScript:** Fits a prototype and deployment targets (Vercel, etc.).
-- **tesseract.js only:** OCR in-browser; no backend or cloud APIs (addresses “no cloud” requirement).
-- **Minimal deps:** next, react, tesseract.js, tailwind; vitest for tests. No over-engineering.
-- **File structure:** `src/app/page.tsx`, `src/app/layout.tsx`, `src/app/globals.css`, `src/lib/labelComparison.ts` + test; clear separation of comparison logic from UI.
-- **Fuzzy + numeric + substring:** Pure TS in `labelComparison.ts`; no extra fuzzy library; Levenshtein and substring logic are appropriate for the problem.
+The README repeatedly claims Tesseract.js for on-device OCR:
+- "OCR is done **on-device** using `tesseract.js` (no external ML endpoints)"
+- "On-device OCR via `tesseract.js`"
+- "Avoids outbound calls to ML endpoints, which are often blocked on government networks"
 
-❌ **What's Missing/Broken:**
-- **Layout metadata:** `layout.tsx` still has `title: "Create Next App"` and `description: "Generated by create next app"`. Should be TTB-specific.
-- **next.config.ts:** Empty; fine for scope but could mention any future needs (e.g. env for feature flags).
+The actual code uses Google Gemini 2.5 Flash via a server-side API route that makes outbound HTTPS calls to Google's servers. `tesseract.js` is not in `package.json`. This makes the entire "rationale" section of the README fiction. Evaluators will either think you copy-pasted from an earlier version or deliberately misrepresented your work.
 
-🔧 **Recommended Fixes (Priority Order):**
-1. **High:** Set `metadata.title` and `metadata.description` in `layout.tsx` to the app name and purpose.
-2. **Low:** Optional: add a one-line comment in `next.config.ts` if you anticipate config later.
+### 3. Government warning all-caps validation is broken
 
----
+**Severity: HIGH — demonstrates the wrong thing works**
 
-### [4] User Experience and Error Handling
+`page.tsx:186`:
+```js
+const hasExactHeader = /GOVERNMENT WARNING[.:]/i.test(text);
+```
 
-✅ **What's Working:**
-- **Loading states:** “Initializing OCR engine…”, “Reading label N of M…”, “Processing…”, disabled buttons during run; batch progress card with dismiss.
-- **Error handling:** `catastrophicError` modal for OCR init failure and unexpected errors; `error` for validation (e.g. batch JSON); per-label `ocr_failed` with retry/replace/skip; `setError(null)` on new run.
-- **Graceful degradation:** Failed labels don’t block batch; user can skip or replace image and re-run.
-- **Accessibility:** `aria-live`/`aria-atomic` for step and progress; `role="alertdialog"` for catastrophic error; `aria-label` on icon buttons; keyboard (Escape, Enter, arrows); visible focus and large tap targets.
-- **Mobile:** Responsive (max-width, grid, padding); single-column and full-width buttons on small screens.
-- **One-at-a-time review:** Reduces cognitive load; clear “Field N of M”; single primary action per card.
+The `i` (case-insensitive) flag means `"Government Warning:"` passes validation as all-caps. Jenny's interview specifically described rejecting this exact case: *"I caught one last month where they used 'Government Warning' in title case instead of all caps. Rejected."* The bug makes the feature do the opposite of what the stakeholder described.
 
-❌ **What's Missing/Broken:**
-- **No React Error Boundary:** Uncaught render errors in the big `Home` component could white-screen the app; no `componentDidCatch` or `<ErrorBoundary>`.
-- **Batch JSON parse errors:** Invalid JSON likely leaves `parsedBatchData` null and a generic “Batch JSON must be a valid array”; could show the parse error message (e.g. “Unexpected token at line X”).
-- **File type validation:** `accept="image/*"` but no explicit check or message if user selects a non-image; large or corrupt files could cause worker to hang without a clear message.
-- **Hydration mismatch:** Screenshot notes React hydration warnings; often from conditional rendering or browser extensions but worth a quick check (e.g. avoid rendering step-dependent content before mount).
+### 4. `page.tsx` is a 2,000-line monolith
 
-🔧 **Recommended Fixes (Priority Order):**
-1. **High:** Add an Error Boundary around the main content (e.g. in `layout.tsx` or a wrapper) with a simple “Something went wrong” and retry.
-2. **Medium:** When batch JSON parse fails, set `error` to the parser error message (or a sanitized version) so the user can fix the JSON.
-3. **Low:** Add optional file type/size check before starting OCR and show a clear message; consider timeout for `worker.recognize` on very large images.
+**Severity: MEDIUM — code quality evaluation criterion**
 
----
+One file contains:
+- 20+ `useState` hooks
+- OCR calling logic (`ocrImage`)
+- Text parsing/extraction logic (`extractFromOcrText`)
+- A `ThumbnailCard` component
+- All UI for 3 wizard steps (upload, form, results)
+- Keyboard shortcut handling
+- Batch processing orchestration
+- Review workflow state machine
+- File replacement logic
 
-### [5] Attention to Requirements
+This would be the first thing a senior reviewer notices when opening the project. Even if everything else worked perfectly, a 2,000-line single component demonstrates poor engineering habits for a submission being evaluated on "code quality and organization."
 
-✅ **What's Working:**
-- **Sarah — “something my mother could figure out”:** Linear 3-step flow; one primary action per screen; summary then one-at-a-time review; large buttons and clear labels; minimal hunting for controls.
-- **Sarah — “results in about 5 seconds”:** Single worker, one preprocess + one recognize per image; completion screen shows “Processed in X seconds”; typical run is within a few seconds for normal images (no 30–40 sec vendor-style delay).
-- **Sarah — “batch uploads … would be huge” / Janet:** Batch mode with multiple images and JSON array; “Label N of M”; progress card; “Next Label” on completion; last record reused when labels > records.
-- **Dave — “STONE'S THROW on the label but Stone's Throw in the application … obviously the same thing”:** Fuzzy thresholds for brand/class; that exact case and similar formatting differences match with notes like “X% match - minor formatting difference. Use your judgment.”
-- **Jenny — “word-for-word … GOVERNMENT WARNING: in all caps and bold”:** Warning text compared with normalized equality (no fuzzy); header check accepts `GOVERNMENT WARNING:` or `GOVERNMENT WARNING.` (OCR) via `hasExactHeader` regex `[.:]`; title-case “Government Warning” would correctly fail the header check.
-- **Marcus — “our network blocks outbound … keep that in mind if you're thinking about cloud APIs”:** All OCR and logic in browser (tesseract.js); no external API calls; README states on-device OCR and no cloud.
-- **Sample label:** App default and README example use the required sample fields (OLD TOM DISTILLERY, Kentucky Straight Bourbon Whiskey, 45% Alc./Vol. (90 Proof), 750 mL, standard warning).
-- **Deliverables:** Source code and README with setup, run, approach, assumptions, limitations, and trade-offs are present. Known Limitations and future enhancement (e.g. Cloud Vision/Textract) documented.
+### 5. OCR prompt wastes Gemini's capabilities
 
-❌ **What's Missing/Broken:**
-- **README “Show raw OCR text”:** Claim no longer true for current UI; either restore a minimal raw-OCR view or update README.
-- **Deployed Application URL:** Requirements ask for a “Deployed application URL” as a deliverable; README does not mention or link a deployed URL (e.g. Vercel). If not yet deployed, README should state “Deploy: …” or “Live demo: TBD.”
-- **Government warning “word-for-word”:** Implementation uses normalized (loose) match, not character-exact; README says “ignoring spacing/punctuation.” If evaluators interpret “word-for-word” as literal character-exact, they may flag; consider one sentence in README clarifying normalized word-for-word.
+**Severity: MEDIUM — missed opportunity, fragile architecture**
 
-🔧 **Recommended Fixes (Priority Order):**
-1. **High:** Align README with current UI (remove or rephrase “Show raw OCR text” and/or add the feature).
-2. **High:** In README, add a “Deployed application” / “Live demo” line with the URL if deployed, or “Not yet deployed; run locally with `npm run dev`” so the deliverable is explicitly addressed.
-3. **Low:** In README or code comment, clarify that “word-for-word” means normalized text match (spacing/punctuation normalized) unless product explicitly requires character-exact match.
+The Gemini prompt is:
+> "Extract all visible text from this alcohol label exactly as it appears. Return only the raw text, no commentary."
+
+This uses a vision-language model as a dumb OCR engine, then runs fragile regex/heuristic parsing client-side. Gemini can extract structured data directly:
+
+```
+"Extract the following fields from this alcohol label image as JSON:
+- brandName
+- classType  
+- alcoholContent
+- netContents
+- bottlerName
+- bottlerAddress
+- countryOfOrigin
+- governmentWarning (exact text)
+- isGovernmentWarningHeaderAllCaps (boolean)
+- isGovernmentWarningHeaderBold (boolean)"
+```
+
+This would fix failures #1, #3, and #9 simultaneously, eliminate the fragile `extractFromOcrText` heuristics, and produce more accurate results.
 
 ---
 
-### [6] Creative Problem-Solving
+## 3. FIX PLAN
 
-✅ **What's Working:**
-- **Substring/prefix matching for class/type:** When OCR returns only “Kentucky Straight,” `isSubstringMatch` (prefix or ≥40% word match) marks it as match with note “Partial OCR read (X% of words matched). Use your judgment.” (`labelComparison.ts`).
-- **Numeric normalization:** `normalizeNumeric` (digits only) so “750 mL” vs “750mL” and “45% Alc./Vol. (90 Proof)” vs “45 % Alc/Vol (90 Proof)” match without relying on fuzzy alone (`labelComparison.ts`).
-- **One-at-a-time review:** Apple-wizard style; summary → review one issue per screen → completion; reduces overload and focuses the agent.
-- **Multiple text representations for extraction:** `cleanText`, `singleLine`, `allCaps` and keyword ordering improve robustness across layouts and casing (`page.tsx` extractFromOcrText).
-- **Government warning header flexibility:** Regex `GOVERNMENT WARNING[.:]` accepts period or colon from OCR (`page.tsx`).
-- **Fuzzy thresholds:** Different thresholds (85% brand/class, 90% alcohol/net) and tiered notes (match / verify / different) (`labelComparison.ts`).
+### Fix 1: Add missing fields (name/address, country of origin)
 
-❌ **What's Missing/Broken:**
-- **Image preprocessing:** Only one strategy (2x + contrast + grayscale). Multi-strategy preprocessing was removed; Known Limitations correctly state OCR limits and substring fallback.
-- **No test for substring match:** `labelComparison.test.ts` doesn’t include a case like expected “Kentucky Straight Bourbon Whiskey” and actual “Kentucky Straight” → match with partial note; regression risk.
+**Files:** `src/lib/labelComparison.ts`, `src/app/page.tsx`
 
-🔧 **Recommended Fixes (Priority Order):**
-1. **Medium:** Add a test in `labelComparison.test.ts`: classType expected “Kentucky Straight Bourbon Whiskey”, actual “Kentucky Straight” → status match and notes contain “Partial OCR”.
-2. **Low:** In README or comments, briefly mention that substring/prefix matching was added specifically for partial class/type OCR (creative solution to real limitation).
+**Step A — Update data types** in `labelComparison.ts`:
 
----
+```ts
+export type ApplicationLabelData = {
+  brandName: string;
+  classType: string;
+  alcoholContent: string;
+  netContents: string;
+  bottlerNameAddress: string;      // ADD
+  countryOfOrigin: string;         // ADD
+  governmentWarning: string;
+};
 
-## 3. Additional Checks
+export type ExtractedLabelData = {
+  brandName?: string;
+  classType?: string;
+  alcoholContent?: string;
+  netContents?: string;
+  bottlerNameAddress?: string;     // ADD
+  countryOfOrigin?: string;        // ADD
+  governmentWarningText?: string;
+  hasGovernmentWarningHeaderExact?: boolean;
+};
+```
 
-**Deliverables (from project requirements)**
-- ✅ **Source code repository:** All source code present (Next.js app + lib + tests).
-- ✅ **README:** Setup and run instructions (`npm install`, `npm run dev`), approach, tools, assumptions, trade-offs, limitations, Known Limitations, deployment notes.
-- ❌ **Deployed application URL:** Not mentioned in README; requirements ask for “Working prototype we can access and test.” Add a line with the live URL or state that the app is run locally only for the prototype.
+**Step B — Add comparison logic** in `compareLabelData()`:
 
-**README.md**
-- ✅ Setup: `npm install`, `npm run dev`, open localhost.
-- ✅ Approach: workflow, technical choices, assumptions, limitations, Known Limitations, deployment.
-- ❌ “Show raw OCR text” is outdated vs current UI.
-- ❌ Deployed URL (or “local only”) not stated.
-- ✅ Trade-offs: on-device OCR vs accuracy, prototype vs production.
+Add fuzzy checks for `bottlerNameAddress` (threshold 80) and `countryOfOrigin` (threshold 90) using the same `pushFuzzyCheck` pattern as brand name.
 
-**Testing**
-- ✅ `labelComparison.test.ts`: 21 tests, all passing.
-- ✅ Covers normalization, similarity, numeric match, government warning, missing fields, fuzzy tiers.
-- ❌ No test for classType substring/partial match.
-- ❌ No tests for `extractFromOcrText` (lives in `page.tsx`; could be moved to lib and tested).
+**Step C — Add UI fields** in `page.tsx`:
 
-**Performance**
-- ✅ Single worker per run; worker terminated in `finally`.
-- ✅ Object URLs revoked (e.g. thumbnails); no obvious leak in flow.
-- ⚠️ Very large images could hold memory during preprocessing; no cap or resize-to-max dimension.
-- ✅ Animations use CSS; no heavy JS animation loops.
+Add two input fields in the Step 2 form (after net contents, before government warning).
 
-**TTB label elements (requirements)**
-- ✅ Brand name, class/type, alcohol content, net contents, government warning — all implemented and compared.
-- ⚠️ Bottler/producer and country of origin (imports) are not in scope for this prototype; requirements say “common elements include” and the sample label focuses on the five fields above. Acceptable to document as out-of-scope if desired.
+**Step D — Add extraction** in `extractFromOcrText()`:
 
-**Stakeholder / scope notes**
-- **Jenny (“handle images that aren't perfectly shot … weird angles, bad lighting, glare”):** Marked as “maybe out of scope” in her notes. App uses image preprocessing (2x, contrast, grayscale) and Known Limitations state OCR struggles with decorative/styled text; no explicit “bad angle” handling — documented as limitation/future enhancement.
+Add regex/heuristic for address patterns and country names, or (better) switch to structured Gemini extraction per Fix 5.
 
 ---
 
-## 4. Top 5 Fixes Before Submission (by Impact)
+### Fix 2: Fix the README
 
-| # | Fix | Location | Impact |
-|---|-----|----------|--------|
-| 1 | Remove or guard the two `console.log("RAW OCR TEXT:", ocrText)` calls (e.g. only in development). | `src/app/page.tsx` ~455, ~520 | High — evaluators will see debug logs in console and question production readiness. |
-| 2 | Delete the dead fallback UI block (~330 lines) that renders “Step 1 of 2 / Step 2 of 2” and is never reached. | `src/app/page.tsx` ~1985–2313 | High — reduces confusion, file size, and “two UIs” impression. |
-| 3 | Update layout metadata: set `title` and `description` to the TTB app name and purpose. | `src/app/layout.tsx` | Medium — “Create Next App” looks like an unmodified template. |
-| 4 | Align README with app: either add a “View raw OCR” (e.g. collapsible) in Step 3 or change README to state raw OCR is available in browser console only. | `README.md`, optionally `page.tsx` | Medium — avoids “feature described but missing” concern. |
-| 5 | Add an Error Boundary around the main app content so a render error shows a fallback UI instead of a blank screen. | `src/app/layout.tsx` or new `ErrorBoundary.tsx` | Medium — improves robustness and polish. |
+**File:** `README.md`
 
----
+Replace all Tesseract.js references with accurate Gemini API description:
 
-## 5. Estimated Time per Fix
-
-| Fix | Estimate |
-|-----|----------|
-| 1. Remove/guard console.log | 5 min |
-| 2. Remove dead fallback UI | 15 min |
-| 3. Layout metadata | 2 min |
-| 4. README + optional raw OCR UI | 10–25 min (README only ~10 min) |
-| 5. Error Boundary | 20 min |
-
-**Total for top 5:** ~50–65 minutes.
+- Line 22-23: Change "OCR is done **on-device** using `tesseract.js`" → "OCR uses **Google Gemini 2.5 Flash** via a server-side API route"
+- Lines 101-103: Change "On-device OCR via `tesseract.js`" → "Server-side OCR via Google Gemini API"
+- Lines 103: Remove "Avoids outbound calls to ML endpoints" — the app does exactly that
+- Line 144: Change "Browser-based Tesseract struggles with decorative fonts" → "Gemini handles most label styles well; decorative/extreme fonts may reduce accuracy"
+- Add `GEMINI_API_KEY` to "Getting started" prerequisites
 
 ---
 
-## 6. Checklist Summary
+### Fix 3: Fix government warning all-caps validation
 
-**Core requirements:** Upload ✅, Application data ✅, OCR ✅, Field comparison ✅, Results display ✅, Agent review ✅, Speed ✅ (within “few seconds”), Accessible UI ✅.
+**File:** `src/app/page.tsx`, line 186
 
-**Code quality:** No `any` ✅, Naming ✅, Types ✅, Test coverage for comparison ✅; console.log ❌, Dead code ❌, Very large component ❌, No test for substring match ❌.
+```diff
+- const hasExactHeader = /GOVERNMENT WARNING[.:]/i.test(text);
++ const hasExactHeader = /GOVERNMENT WARNING[.:]/.test(text);
+```
 
-**Technical choices:** Libraries ✅, Browser OCR ✅, Structure ✅; Layout metadata ❌.
+Remove the `i` flag. The regex literal already contains uppercase text, so it will only match the all-caps form.
 
-**UX & errors:** Loading ✅, Errors surfaced ✅, Accessibility ✅, Mobile ✅; Error Boundary ❌, Batch JSON error message could be better ⚠️.
+**File:** `src/lib/labelComparison.test.ts`
 
-**Requirements:** Sarah ✅, Dave ✅, Jenny ✅, Janet ✅, Marcus ✅; README raw OCR claim ❌.
+Add a test case:
 
-**Creative:** Substring match ✅, Numeric normalization ✅, One-at-a-time flow ✅, Flexible header ✅; Test for substring ❌.
+```ts
+it("rejects title-case 'Government Warning:' as not all-caps header", () => {
+  // Simulates the exact case Jenny described rejecting
+  const extracted: ExtractedLabelData = {
+    ...fullMatch,
+    hasGovernmentWarningHeaderExact: false, // what the fixed extractor should produce
+  };
+  const checks = compareLabelData(baseApplication, extracted);
+  const headerCheck = checks.find(c => c.field === "governmentWarningHeader");
+  expect(headerCheck?.status).toBe("mismatch");
+});
+```
 
-**README:** Setup ✅, Approach ✅, Limitations ✅; Raw OCR wording ❌; Deployed URL (or “local only”) ❌.
+---
 
-**Testing:** 21 tests ✅; Substring case ❌; extractFromOcrText untested ⚠️.
+### Fix 4: Break up `page.tsx`
 
-**Performance:** Worker lifecycle ✅, No obvious leaks ✅; Very large images unguarded ⚠️.
+**Target structure:**
+
+```
+src/
+  components/
+    ThumbnailCard.tsx          (lines 219-291 — already a component, just move it)
+    WizardProgress.tsx         (lines 645-678 — the progress dots)
+    Step1Upload.tsx            (lines 688-878 — upload step)
+    Step2ApplicationData.tsx   (lines 881-1297 — form + loading states)
+    Step3Results.tsx           (lines 1299-1996 — results + review flow)
+    CatastrophicErrorModal.tsx (repeated 3 times — extract once)
+    BatchProgressCard.tsx      (repeated 2 times — extract once)
+  hooks/
+    useVerification.ts         (runVerification, runSingleImageVerification, state)
+    useKeyboardShortcuts.ts    (lines 598-636)
+  lib/
+    ocrClient.ts               (ocrImage function, lines 198-217)
+    extractFromOcrText.ts      (extractFromOcrText, lines 37-196)
+    labelComparison.ts         (keep as-is)
+  app/
+    page.tsx                   (thin shell: mode/step routing + state provider)
+```
+
+This doesn't change any functionality — just moves code to logical files.
+
+---
+
+### Fix 5: Switch to structured Gemini extraction
+
+**File:** `src/app/api/ocr/route.ts`
+
+Replace the generic OCR prompt with a structured extraction prompt:
+
+```ts
+const prompt = `Analyze this alcohol beverage label image. Extract the following fields as JSON. 
+If a field is not visible, set it to null.
+
+{
+  "brandName": "the primary brand name",
+  "classType": "the class/type designation (e.g. Kentucky Straight Bourbon Whiskey)",
+  "alcoholContent": "alcohol content as shown (e.g. 45% Alc./Vol. (90 Proof))",
+  "netContents": "net contents as shown (e.g. 750 mL)",
+  "bottlerNameAddress": "name and address of bottler/producer",
+  "countryOfOrigin": "country of origin if shown, null if domestic",
+  "governmentWarningText": "the full government warning text, word for word",
+  "isGovernmentWarningHeaderAllCaps": true/false,
+  "isGovernmentWarningHeaderBold": true/false
+}
+
+Return ONLY valid JSON, no markdown fences.`;
+```
+
+Then parse the JSON response directly instead of running `extractFromOcrText` heuristics. Keep `extractFromOcrText` as a fallback for when Gemini returns non-JSON.
+
+This single change fixes:
+- Missing bottler/producer field (Fix 1)
+- Missing country of origin field (Fix 1)  
+- Bold detection (requirement #9)
+- Fragile heuristic parsing
+- Brand name extraction accuracy
+
+---
+
+### Fix 6: Remove API key logging
+
+**File:** `src/app/api/ocr/route.ts`, lines 5, 8-9
+
+```diff
+  export async function POST(req: NextRequest) {
+-   console.log("OCR route hit");
+-
+    const apiKey = process.env.GEMINI_API_KEY;
+-   console.log("API key present:", !!apiKey);
+-   console.log("Key prefix:", process.env.GEMINI_API_KEY?.slice(0, 10));
+```
+
+Logging the first 10 characters of an API key to stdout is a security issue that would be flagged in any code review.
+
+---
+
+## Priority Order for Fixes
+
+If time is limited, implement in this order:
+
+1. **Fix 3** (5 min) — Remove the `i` flag. One character change.
+2. **Fix 6** (2 min) — Remove console.logs. Three line deletions.
+3. **Fix 2** (15 min) — Fix README to match reality. Text edits only.
+4. **Fix 5** (30 min) — Structured Gemini prompt. Fixes #1, #5, #6, #9 simultaneously.
+5. **Fix 1** (45 min) — Add missing fields to types, comparison, and UI. Mostly covered by Fix 5 if done first.
+6. **Fix 4** (60 min) — Component decomposition. Important but lowest risk if everything else works.
+
+Total estimated time to fix all critical issues: **~2.5 hours**
+
+---
+
+## Summary Verdict
+
+This submission has a solid foundation — the UI is genuinely good, the comparison logic is thoughtful, the wizard flow is clean, and the test coverage on comparison logic is decent. But it has **two completely missing required fields**, a **README that describes a different app**, and a **broken validation for the exact scenario a stakeholder described**. These three issues together would likely result in a rejection, because they signal the candidate either didn't read the requirements carefully or didn't verify their work before submitting.
+
+The fastest path to a passing submission is: Fix 3 → Fix 6 → Fix 2 → Fix 5 (structured Gemini prompt, which solves missing fields + bold detection in one shot) → Fix 4 if time permits.

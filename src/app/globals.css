@@ -143,6 +143,75 @@ select:focus-visible {
   animation: progress-dot-pulse 2s ease-in-out infinite;
 }
 
+/* Skeleton loading (HIG) – visible shimmer */
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 150% 0;
+  }
+  100% {
+    background-position: -150% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    105deg,
+    #D1D5DB 0%,
+    #D1D5DB 35%,
+    #F9FAFB 50%,
+    #D1D5DB 65%,
+    #D1D5DB 100%
+  );
+  background-size: 300% 100%;
+  animation: skeleton-shimmer 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer {
+    animation: none;
+    background: #E5E5EA;
+  }
+}
+
+/* Loading screen entrance */
+@keyframes loading-screen-in {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes loading-content-in {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-loading-screen-in {
+  animation: loading-screen-in 0.25s ease-out forwards;
+}
+
+.animate-loading-content-in {
+  animation: loading-content-in 0.4s ease-out 0.1s forwards;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-loading-screen-in,
+  .animate-loading-content-in {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* Step 1 – Apple setup entrance */
 @keyframes step1-header-in {
   0% {
