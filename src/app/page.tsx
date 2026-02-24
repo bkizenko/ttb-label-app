@@ -1936,6 +1936,19 @@ export default function Home() {
                               {currentCheck.notes ? (
                                 <p className="mt-5 text-[15px] font-normal italic text-[#8E8E93]">
                                   {currentCheck.notes}
+                                  {currentCheck.noteHref && (
+                                    <>
+                                      {" "}
+                                      <a
+                                        href={currentCheck.noteHref}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="not-italic font-semibold text-[#007AFF] underline hover:opacity-80"
+                                      >
+                                        TTB regulations ↗
+                                      </a>
+                                    </>
+                                  )}
                                 </p>
                               ) : null}
                               <div className="mt-8 flex flex-col gap-4">
