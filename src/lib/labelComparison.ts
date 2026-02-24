@@ -26,7 +26,8 @@ export type FieldCheck = {
   field:
     | keyof ApplicationLabelData
     | "governmentWarningHeader"
-    | "governmentWarningHeaderBold";
+    | "governmentWarningHeaderBold"
+    | "alcoholContentFormat";
   status: FieldCheckStatus;
   expected?: string;
   actual?: string;
@@ -276,6 +277,21 @@ export const compareLabelData = (
     } else {
       pushFuzzyCheck(checks, field, expected, actual, threshold);
     }
+  }
+
+  // ABV abbreviation: TTB prohibits "ABV" as a standalone abbreviation
+  if (
+    /\bABV\b/i.test(application.alcoholContent) ||
+    /\bABV\b/i.test(extracted.alcoholContent ?? "")
+  ) {
+    checks.push({
+      field: "alcoholContentFormat",
+      status: "mismatch",
+      expected: "Alc. by Vol. (or similar)",
+      actual: "Contains 'ABV'",
+      notes:
+        "TTB prohibits 'ABV' as a standalone abbreviation. Labels must use 'Alc. by Vol.', 'Alcohol X% by volume', or similar.",
+    });
   }
 
   // Bottler/producer name + address: fuzzy
