@@ -386,6 +386,8 @@ export default function Home() {
   >(null);
   const [progressCardDismissed, setProgressCardDismissed] = useState(false);
   const [govWarningExpanded, setGovWarningExpanded] = useState(false);
+  const [batchTab, setBatchTab] = useState<"summary" | "detail">("detail");
+  const [confirmingReset, setConfirmingReset] = useState(false);
   const [processingCurrentDebounced, setProcessingCurrentDebounced] =
     useState(0);
   const [processingPreviewUrl, setProcessingPreviewUrl] = useState<
@@ -488,43 +490,58 @@ export default function Home() {
 
       try {
         const newResults: VerificationResult[] = [];
+        const BATCH_SIZE = 3;
 
-        for (let index = 0; index < files.length; index += 1) {
-          setProcessingCurrent(index + 1);
-          const file = files[index];
-          const appData =
-            applications[index] ?? applications[applications.length - 1];
+        for (let batchStart = 0; batchStart < files.length; batchStart += BATCH_SIZE) {
+          const batchEnd = Math.min(batchStart + BATCH_SIZE, files.length);
+          setProgressMessage(
+            files.length === 1
+              ? "Reading label..."
+              : `Reading labels ${batchStart + 1}–${batchEnd} of ${files.length}...`,
+          );
 
-          const start = performance.now();
-          setProgressMessage(`Reading label ${index + 1} of ${files.length}...`);
+          const batchItems = files.slice(batchStart, batchEnd).map((file, i) => ({
+            file,
+            index: batchStart + i,
+            appData:
+              applications[batchStart + i] ??
+              applications[applications.length - 1],
+          }));
 
-          try {
-            const { text: ocrText, extracted: extractedFromApi } =
-              await ocrImage(file);
-            if (process.env.NODE_ENV === "development") {
-              console.log("RAW OCR TEXT:", ocrText);
-            }
-            const extracted =
-              extractedFromApi ?? extractFromOcrText(ocrText);
-            const checks = compareLabelData(appData, extracted);
-            const durationMs = performance.now() - start;
-            newResults.push({
-              status: "success",
-              fileName: file.name,
-              checks,
-              rawOcrText: ocrText,
-              durationMs,
-            });
-          } catch {
-            newResults.push({
-              status: "ocr_failed",
-              fileName: file.name,
-              fileIndex: index,
-            });
-          }
+          const batchResults = await Promise.all(
+            batchItems.map(async ({ file, index, appData }) => {
+              const start = performance.now();
+              try {
+                const { text: ocrText, extracted: extractedFromApi } =
+                  await ocrImage(file);
+                if (process.env.NODE_ENV === "development") {
+                  console.log("RAW OCR TEXT:", ocrText);
+                }
+                const extracted =
+                  extractedFromApi ?? extractFromOcrText(ocrText);
+                const checks = compareLabelData(appData, extracted);
+                const durationMs = performance.now() - start;
+                return {
+                  status: "success" as const,
+                  fileName: file.name,
+                  checks,
+                  rawOcrText: ocrText,
+                  durationMs,
+                };
+              } catch {
+                return {
+                  status: "ocr_failed" as const,
+                  fileName: file.name,
+                  fileIndex: index,
+                };
+              }
+            }),
+          );
+
+          newResults.push(...batchResults);
+          setProcessingCurrent(batchEnd);
+          setResults([...newResults]);
         }
-
-        setResults(newResults);
         setProgressMessage(null);
         setStep(3);
       } catch (e) {
@@ -656,6 +673,8 @@ export default function Home() {
     setReplacingResultIndex(null);
     setPendingReplaceResultIndex(null);
     setProgressCardDismissed(false);
+    setBatchTab("detail");
+    setConfirmingReset(false);
   };
 
   /* Keyboard shortcuts (enhance only; every action has a visible button) */
@@ -705,6 +724,7 @@ export default function Home() {
     setCurrentReviewIndex(0);
     setManualOverrides({});
     setGovWarningExpanded(false);
+    setConfirmingReset(false);
   }, [currentResultIndex]);
 
   /* Collapse gov warning when moving between fields */
@@ -1453,6 +1473,11 @@ export default function Home() {
             (c) => c.status === "mismatch" || c.status === "missing",
           ).length
         : 0;
+    const anyResultHasIssues = results.some(
+      (r) =>
+        r.status === "success" &&
+        r.checks.some((c) => c.status !== "match"),
+    );
 
     return (
       <>
@@ -1613,8 +1638,78 @@ export default function Home() {
             </section>
           )}
 
+          {results.length > 1 && (
+            <div className="flex gap-1 rounded-[12px] bg-[#F2F2F7] p-1">
+              <button
+                type="button"
+                onClick={() => setBatchTab("summary")}
+                className={`flex-1 rounded-[10px] px-4 py-2 text-[15px] font-semibold transition-all duration-200 ${
+                  batchTab === "summary"
+                    ? "bg-white text-[#1C1C1E] shadow-sm"
+                    : "text-[#8E8E93] hover:text-[#1C1C1E]"
+                }`}
+              >
+                All {results.length} labels
+              </button>
+              <button
+                type="button"
+                onClick={() => setBatchTab("detail")}
+                className={`flex-1 rounded-[10px] px-4 py-2 text-[15px] font-semibold transition-all duration-200 ${
+                  batchTab === "detail"
+                    ? "bg-white text-[#1C1C1E] shadow-sm"
+                    : "text-[#8E8E93] hover:text-[#1C1C1E]"
+                }`}
+              >
+                Label {safeIndex + 1} of {results.length}
+              </button>
+            </div>
+          )}
+
           <main className="flex flex-col gap-10">
-            {!hasResults || !activeResult ? (
+            {batchTab === "summary" && results.length > 1 ? (
+              <section className="mx-auto flex w-full max-w-[600px] flex-col gap-3">
+                {results.map((result, i) => {
+                  const isSuccess = result.status === "success";
+                  const hasIssues =
+                    isSuccess &&
+                    result.checks.some((c) => c.status !== "match");
+                  const isFailed = result.status === "ocr_failed";
+                  const issueCount = isSuccess
+                    ? result.checks.filter((c) => c.status !== "match").length
+                    : 0;
+                  const icon = isFailed ? "❌" : hasIssues ? "⚠️" : "✅";
+                  const statusText = isFailed
+                    ? "Could not read label"
+                    : hasIssues
+                      ? `${issueCount} field${issueCount !== 1 ? "s" : ""} need review`
+                      : "All fields verified";
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => {
+                        setCurrentResultIndex(i);
+                        setBatchTab("detail");
+                      }}
+                      className="flex items-center gap-4 rounded-[20px] bg-white px-5 py-4 text-left transition-transform duration-150 active:scale-[0.98] hover:scale-[1.01] depth-1"
+                    >
+                      <span className="text-[28px] leading-none">{icon}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[16px] font-semibold text-[#1C1C1E]">
+                          {result.fileName}
+                        </p>
+                        <p className="mt-0.5 text-[14px] text-[#8E8E93]">
+                          {statusText}
+                        </p>
+                      </div>
+                      <span className="text-[22px] font-light text-[#C7C7CC]">
+                        ›
+                      </span>
+                    </button>
+                  );
+                })}
+              </section>
+            ) : !hasResults || !activeResult ? (
               <section className="rounded-[20px] bg-white p-8 text-[16px] text-[#8E8E93] depth-1">
                 No results yet. Run a verification to see comparisons.
               </section>
@@ -2142,18 +2237,53 @@ export default function Home() {
             )}
 
             <div className="flex justify-center pt-6">
-              <button
-                type="button"
-                onClick={resetWizard}
-                className="inline-flex min-h-[56px] w-full max-w-[320px] items-center justify-center rounded-[12px] px-6 py-4 text-[17px] font-semibold text-white transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
-                style={{
-                  background:
-                    "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
-                  boxShadow: "0 4px 12px rgba(0, 122, 255, 0.25)",
-                }}
-              >
-                Check another label
-              </button>
+              {confirmingReset ? (
+                <div className="flex w-full max-w-[320px] flex-col items-center gap-3">
+                  <p className="text-center text-[15px] text-[#8E8E93]">
+                    Unreviewed fields won&apos;t be saved. Start over?
+                  </p>
+                  <div className="flex w-full gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingReset(false)}
+                      className="flex min-h-[52px] flex-1 items-center justify-center rounded-[12px] border-2 border-[#E5E5EA] bg-white px-4 py-3 text-[16px] font-semibold text-[#1C1C1E] transition-all duration-200 hover:bg-[#F2F2F7] active:scale-[0.98]"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={resetWizard}
+                      className="flex min-h-[52px] flex-1 items-center justify-center rounded-[12px] px-4 py-3 text-[16px] font-semibold text-white transition-all duration-200 active:scale-[0.98]"
+                      style={{
+                        background:
+                          "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
+                        boxShadow: "0 4px 12px rgba(0, 122, 255, 0.25)",
+                      }}
+                    >
+                      Start Over
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (anyResultHasIssues && reviewMode !== "complete") {
+                      setConfirmingReset(true);
+                    } else {
+                      resetWizard();
+                    }
+                  }}
+                  className="inline-flex min-h-[56px] w-full max-w-[320px] items-center justify-center rounded-[12px] px-6 py-4 text-[17px] font-semibold text-white transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                  style={{
+                    background:
+                      "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
+                    boxShadow: "0 4px 12px rgba(0, 122, 255, 0.25)",
+                  }}
+                >
+                  Check another label
+                </button>
+              )}
             </div>
             <p className="pt-6 text-center text-[13px] text-[#8E8E93]">
               We encourage you to review TTB&apos;s guidelines at{" "}
