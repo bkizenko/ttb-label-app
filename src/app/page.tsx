@@ -385,6 +385,7 @@ export default function Home() {
     number | null
   >(null);
   const [progressCardDismissed, setProgressCardDismissed] = useState(false);
+  const [govWarningExpanded, setGovWarningExpanded] = useState(false);
   const [processingCurrentDebounced, setProcessingCurrentDebounced] =
     useState(0);
   const [processingPreviewUrl, setProcessingPreviewUrl] = useState<
@@ -703,7 +704,13 @@ export default function Home() {
     setReviewMode("summary");
     setCurrentReviewIndex(0);
     setManualOverrides({});
+    setGovWarningExpanded(false);
   }, [currentResultIndex]);
+
+  /* Collapse gov warning when moving between fields */
+  useEffect(() => {
+    setGovWarningExpanded(false);
+  }, [currentReviewIndex]);
 
   const renderProgress = () => {
     const steps = [1, 2, 3] as const;
@@ -940,6 +947,11 @@ export default function Home() {
                 Next: Add application data
               </button>
             </div>
+            <p className="pt-6 text-center text-[13px] text-[#8E8E93]">
+              We encourage you to review TTB&apos;s guidelines at{" "}
+              <a href="https://www.ttb.gov" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#1C1C1E]">ttb.gov</a>{" "}
+              for additional context on label requirements.
+            </p>
           </main>
         </div>
       </div>
@@ -1288,6 +1300,11 @@ export default function Home() {
                 </div>
               </form>
             </section>
+            <p className="pt-6 text-center text-[13px] text-[#8E8E93]">
+              We encourage you to review TTB&apos;s guidelines at{" "}
+              <a href="https://www.ttb.gov" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#1C1C1E]">ttb.gov</a>{" "}
+              for additional context on label requirements.
+            </p>
           </main>
         </div>
         {isProcessing && fileList.length === 1 && (
@@ -1703,6 +1720,7 @@ export default function Home() {
                     governmentWarning: "Government warning text",
                     governmentWarningHeader: "GOVERNMENT WARNING header (all caps)",
                     governmentWarningHeaderBold: "GOVERNMENT WARNING header (bold)",
+                    alcoholContentFormat: "Alcohol content abbreviation",
                   };
                   const fieldsNeedingReview = activeResult.checks.filter(
                     (c) =>
@@ -1893,17 +1911,44 @@ export default function Home() {
                                 Expected
                               </p>
                               <p className="mt-1 text-[17px] font-normal text-[#1C1C1E]">
-                                {currentCheck.expected ?? "—"}
+                                {currentCheck.field === "governmentWarning" && !govWarningExpanded && (currentCheck.expected ?? "").length > 80
+                                  ? (currentCheck.expected ?? "").slice(0, 80) + "…"
+                                  : currentCheck.expected ?? "—"}
                               </p>
                               <p className="mt-5 text-[12px] font-medium uppercase tracking-wide text-[#8E8E93]">
                                 Found on label
                               </p>
                               <p className="mt-1 text-[17px] font-normal text-[#1C1C1E]">
-                                {currentCheck.actual ?? "—"}
+                                {currentCheck.field === "governmentWarning" && !govWarningExpanded && (currentCheck.actual ?? "").length > 80
+                                  ? (currentCheck.actual ?? "").slice(0, 80) + "…"
+                                  : currentCheck.actual ?? "—"}
                               </p>
+                              {currentCheck.field === "governmentWarning" &&
+                                ((currentCheck.expected ?? "").length > 80 || (currentCheck.actual ?? "").length > 80) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setGovWarningExpanded((v) => !v)}
+                                    className="mt-2 text-[15px] font-semibold text-[#007AFF] hover:opacity-80"
+                                  >
+                                    {govWarningExpanded ? "Show less" : "Show full text"}
+                                  </button>
+                                )}
                               {currentCheck.notes ? (
                                 <p className="mt-5 text-[15px] font-normal italic text-[#8E8E93]">
                                   {currentCheck.notes}
+                                  {currentCheck.noteHref && (
+                                    <>
+                                      {" "}
+                                      <a
+                                        href={currentCheck.noteHref}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="not-italic font-semibold text-[#007AFF] underline hover:opacity-80"
+                                      >
+                                        TTB regulations ↗
+                                      </a>
+                                    </>
+                                  )}
                                 </p>
                               ) : null}
                               <div className="mt-8 flex flex-col gap-4">
@@ -2110,6 +2155,11 @@ export default function Home() {
                 Check another label
               </button>
             </div>
+            <p className="pt-6 text-center text-[13px] text-[#8E8E93]">
+              We encourage you to review TTB&apos;s guidelines at{" "}
+              <a href="https://www.ttb.gov" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#1C1C1E]">ttb.gov</a>{" "}
+              for additional context on label requirements.
+            </p>
           </main>
         </div>
       </div>

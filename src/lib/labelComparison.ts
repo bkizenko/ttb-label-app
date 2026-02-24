@@ -26,11 +26,13 @@ export type FieldCheck = {
   field:
     | keyof ApplicationLabelData
     | "governmentWarningHeader"
-    | "governmentWarningHeaderBold";
+    | "governmentWarningHeaderBold"
+    | "alcoholContentFormat";
   status: FieldCheckStatus;
   expected?: string;
   actual?: string;
   notes?: string;
+  noteHref?: string;
 };
 
 export function normalizeForComparison(text: string | undefined): string {
@@ -278,6 +280,22 @@ export const compareLabelData = (
     }
   }
 
+  // ABV abbreviation: TTB prohibits "ABV" as a standalone abbreviation
+  if (
+    /\bABV\b/i.test(application.alcoholContent) ||
+    /\bABV\b/i.test(extracted.alcoholContent ?? "")
+  ) {
+    checks.push({
+      field: "alcoholContentFormat",
+      status: "mismatch",
+      expected: "Alc. by Vol. (or similar)",
+      actual: "Contains 'ABV'",
+      notes:
+        "TTB prohibits 'ABV' as a standalone abbreviation. Labels must use 'Alc. by Vol.', 'Alcohol X% by volume', or similar.",
+      noteHref: "https://www.ttb.gov/regulated-commodities/beverage-alcohol/distilled-spirits/labeling",
+    });
+  }
+
   // Bottler/producer name + address: fuzzy
   {
     const expectedRaw = application.bottlerNameAddress;
@@ -357,7 +375,8 @@ export const compareLabelData = (
       ? "GOVERNMENT WARNING:"
       : "Not found exactly as 'GOVERNMENT WARNING:'",
     notes:
-      "Header must appear in all caps.",
+      "Header must appear in all caps per 27 CFR Part 16.",
+    noteHref: "https://www.ecfr.gov/current/title-27/chapter-I/subchapter-A/part-16",
   });
 
   const bold = extracted.governmentWarningHeaderIsBold;
@@ -368,8 +387,9 @@ export const compareLabelData = (
     actual: bold === true ? "Bold" : bold === false ? "Not bold" : "Not detected",
     notes:
       bold == null
-        ? "Bold styling not detected."
-        : "Header must be bold.",
+        ? "Bold styling not detected by OCR."
+        : "Header must be bold per 27 CFR Part 16.",
+    noteHref: "https://www.ecfr.gov/current/title-27/chapter-I/subchapter-A/part-16",
   });
 
   return checks;
