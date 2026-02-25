@@ -382,9 +382,8 @@ select:focus-visible {
   transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.2s ease;
 }
 .input-apple:focus {
-  border-color: #007AFF;
-  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.15);
-  transform: scale(1.015);
+  border-color: #8E8E93;
+  box-shadow: 0 0 0 2px rgba(142, 142, 147, 0.2);
   outline: none;
 }
 .input-apple::placeholder {

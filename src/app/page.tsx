@@ -27,12 +27,12 @@ type VerificationResult =
 type Mode = "single" | "batch";
 
 const defaultApplicationData: ApplicationLabelData = {
-  brandName: "NEW TOM DISTILLERY",
-  classType: "Kentucky Straight Bourbon Whiskey",
-  alcoholContent: "40% Alc./Vol. (80 Proof)",
-  netContents: "750 mL",
-  bottlerNameAddress: "",
-  countryOfOrigin: "",
+  brandName: "STONE'S THROW",
+  classType: "India Pale Ale",
+  alcoholContent: "6.5% Alc./Vol.",
+  netContents: "12 FL OZ",
+  bottlerNameAddress: "Stone's Throw Brewing Co, Portland, OR",
+  countryOfOrigin: "USA",
   governmentWarning: STANDARD_GOVERNMENT_WARNING,
 };
 
@@ -378,8 +378,6 @@ export default function Home() {
   >(null);
   const processingThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [processingFieldLabel, setProcessingFieldLabel] = useState("");
-  const [processingElapsedMs, setProcessingElapsedMs] = useState(0);
-  const processingTimerStart = useRef(0);
   const [batchStartTime, setBatchStartTime] = useState(0);
 
   useEffect(() => {
@@ -398,7 +396,6 @@ export default function Home() {
   useEffect(() => {
     if (!isProcessing) {
       setProcessingFieldLabel("");
-      setProcessingElapsedMs(0);
       return;
     }
     const fields = ["Brand name", "Class/Type", "Alcohol content", "Net contents", "Bottler/Producer", "Country of origin", "Government warning"];
@@ -408,11 +405,7 @@ export default function Home() {
       i = (i + 1) % fields.length;
       setProcessingFieldLabel(fields[i]);
     }, 800);
-    processingTimerStart.current = performance.now();
-    const tick = setInterval(() => {
-      setProcessingElapsedMs(performance.now() - processingTimerStart.current);
-    }, 200);
-    return () => { clearInterval(cycle); clearInterval(tick); };
+    return () => clearInterval(cycle);
   }, [isProcessing, processingCurrent]);
 
   const handleFilesSelected = (files: FileList | null) => {
@@ -568,8 +561,21 @@ export default function Home() {
     [],
   );
 
+  const normalizeApplicationDataForDomestic = useCallback(
+    (app: ApplicationLabelData): ApplicationLabelData => {
+      const co = (app.countryOfOrigin ?? "").trim();
+      if (co) return app;
+      const bottler = (app.bottlerNameAddress ?? "").toUpperCase();
+      const usKeywords = ["USA", "UNITED STATES", " U.S.", " U.S.A.", " U.S.,", " USA,"];
+      const usStateCode = /\b(AK|AL|AR|AZ|CA|CO|CT|DE|FL|GA|HI|IA|ID|IL|IN|KS|KY|LA|MA|MD|ME|MI|MN|MO|MS|MT|NC|ND|NE|NH|NJ|NM|NV|NY|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VA|VT|WA|WI|WV|WY)\b/;
+      const isDomestic = usKeywords.some((kw) => bottler.includes(kw)) || usStateCode.test(bottler);
+      return isDomestic ? { ...app, countryOfOrigin: "USA" } : app;
+    },
+    [],
+  );
+
   const handleRunSingle = async () => {
-    await runVerification(fileList, [applicationData]);
+    await runVerification(fileList, [normalizeApplicationDataForDomestic(applicationData)]);
   };
 
   const handleRunBatch = async () => {
@@ -581,7 +587,7 @@ export default function Home() {
   };
 
   const handleRunWizard = () => {
-    void runVerification(fileList, [applicationData]);
+    void runVerification(fileList, [normalizeApplicationDataForDomestic(applicationData)]);
   };
 
   const runSingleImageVerification = useCallback(
@@ -727,7 +733,8 @@ export default function Home() {
   }, [currentReviewIndex]);
 
   const renderProgress = () => {
-    const steps = [1, 2, 3] as const;
+    const hasBatchSummary = step === 3 && results.length >= 1;
+    const isOnSummaryTab = hasBatchSummary && batchTab === "summary";
     const isStep1 = step === 1;
     return (
       <div
@@ -736,26 +743,42 @@ export default function Home() {
         <span className="text-[17px] font-bold text-[#1C1C1E]">
           {step === 1 && "Step 1 of 3"}
           {step === 2 && "Step 2 of 3"}
-          {step === 3 && "Step 3 of 3"}
+          {step === 3 && !hasBatchSummary && "Step 3 of 3"}
+          {step === 3 && hasBatchSummary && !isOnSummaryTab && "Step 3 of 4"}
+          {step === 3 && hasBatchSummary && isOnSummaryTab && "Step 4 of 4"}
         </span>
         <div className="flex items-center gap-2">
-          {steps.map((s) => (
+          {[1, 2, 3].map((s) => (
             <span
               key={s}
               className={`rounded-full transition-all duration-300 ${
-                step === s
+                step === s && !isOnSummaryTab
                   ? "progress-dot-active h-3.5 w-3.5 scale-125 bg-[#007AFF] sm:scale-[1.4]"
-                  : step > s
+                  : step > s || (step === s && isOnSummaryTab)
                     ? "h-3.5 w-3.5 bg-[#30D158]"
                     : "h-3.5 w-3.5 bg-[#C7C7CC]"
               }`}
               style={
-                step === s
+                step === s && !isOnSummaryTab
                   ? { boxShadow: "0 0 8px rgba(0, 122, 255, 0.5)" }
                   : undefined
               }
             />
           ))}
+          {hasBatchSummary && (
+            <span
+              className={`rounded-full transition-all duration-300 ${
+                isOnSummaryTab
+                  ? "progress-dot-active h-3.5 w-3.5 scale-125 bg-[#007AFF] sm:scale-[1.4]"
+                  : "h-3.5 w-3.5 bg-[#C7C7CC]"
+              }`}
+              style={
+                isOnSummaryTab
+                  ? { boxShadow: "0 0 8px rgba(0, 122, 255, 0.5)" }
+                  : undefined
+              }
+            />
+          )}
         </div>
       </div>
     );
@@ -1333,21 +1356,18 @@ export default function Home() {
                 <img
                   src={processingPreviewUrl}
                   alt=""
-                  className="h-[200px] w-auto max-w-[280px] shrink-0 object-contain rounded-[20px] depth-1 bg-white"
+                  className="h-[280px] w-auto max-w-[380px] shrink-0 object-contain rounded-[20px] depth-1 bg-white"
                 />
               ) : (
-                <div className="h-[200px] w-[280px] shrink-0 rounded-[20px] bg-[#E5E5EA] depth-1" />
+                <div className="h-[280px] w-[380px] shrink-0 rounded-[20px] bg-[#E5E5EA] depth-1" />
               )}
-              <p className="mt-5 text-[17px] font-semibold text-[#1C1C1E]">
+              <p className="mt-5 text-[28px] font-bold text-[#1C1C1E]">
                 {processingTotal > 1
                   ? `Processing label ${processingCurrent} of ${processingTotal}`
                   : "Analyzing label..."}
               </p>
-              <p className="mt-1 text-[14px] text-[#8E8E93]">
+              <p className="mt-2 text-[20px] text-[#8E8E93]">
                 {processingFieldLabel ? `Checking ${processingFieldLabel}...` : "Starting..."}
-              </p>
-              <p className="mt-1 text-[13px] font-medium tabular-nums text-[#C7C7CC]">
-                {(processingElapsedMs / 1000).toFixed(1)}s
               </p>
             </div>
             {processingTotal > 1 && (
@@ -1515,19 +1535,8 @@ export default function Home() {
             </section>
           )}
 
-          {results.length > 1 && (
+          {results.length >= 1 && (
             <div className="flex gap-1 rounded-[12px] bg-[#F2F2F7] p-1">
-              <button
-                type="button"
-                onClick={() => setBatchTab("summary")}
-                className={`flex-1 rounded-[10px] px-4 py-2 text-[15px] font-semibold transition-all duration-200 ${
-                  batchTab === "summary"
-                    ? "bg-white text-[#1C1C1E] shadow-sm"
-                    : "text-[#8E8E93] hover:text-[#1C1C1E]"
-                }`}
-              >
-                All {results.length} labels
-              </button>
               <button
                 type="button"
                 onClick={() => setBatchTab("detail")}
@@ -1539,11 +1548,22 @@ export default function Home() {
               >
                 Label {safeIndex + 1} of {results.length}
               </button>
+              <button
+                type="button"
+                onClick={() => setBatchTab("summary")}
+                className={`flex-1 rounded-[10px] px-4 py-2 text-[15px] font-semibold transition-all duration-200 ${
+                  batchTab === "summary"
+                    ? "bg-white text-[#1C1C1E] shadow-sm"
+                    : "text-[#8E8E93] hover:text-[#1C1C1E]"
+                }`}
+              >
+                Step 4: Summary
+              </button>
             </div>
           )}
 
           <main className="flex flex-col gap-10">
-            {batchTab === "summary" && results.length > 1 ? (
+            {batchTab === "summary" && results.length >= 1 ? (
               <section className="mx-auto flex w-full max-w-[600px] flex-col gap-4">
                 {/* Aggregate stats */}
                 {(() => {
@@ -1577,11 +1597,28 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={() => {
-                          const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
-                          const rows = [["File Name", "Brand Name", "Class/Type", "Alcohol Content", "Net Contents", "Gov Warning", "Issues", "Duration (s)"].join(",")];
+                          const esc = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
+                          const passedCount = results.filter((r) => r.status === "success" && r.checks.every((c) => c.status === "match")).length;
+                          const reviewCount = results.filter((r) => r.status === "success" && r.checks.some((c) => c.status !== "match")).length;
+                          const ocrFailedCount = results.filter((r) => r.status === "ocr_failed").length;
+                          const totalMs = results.filter((r) => r.status === "success").reduce((sum, r) => sum + (r.status === "success" ? r.durationMs : 0), 0);
+                          const avgMs = totalMs / Math.max(1, results.filter((r) => r.status === "success").length);
+                          const totalSec = totalMs / 1000;
+                          const totalTimeStr = totalSec >= 60 ? `${Math.floor(totalSec / 60)}m ${Math.round(totalSec % 60)}s` : `${totalSec.toFixed(1)}s`;
+                          const rows: string[] = [];
+                          rows.push("Verification Complete");
+                          rows.push(["Metric", "Value"].join(","));
+                          rows.push(["Total labels", String(results.length)].join(","));
+                          rows.push(["Total time", totalTimeStr].join(","));
+                          rows.push(["Avg per label", `${(avgMs / 1000).toFixed(1)}s`].join(","));
+                          rows.push(["Passed", String(passedCount)].join(","));
+                          rows.push(["Need review", String(reviewCount)].join(","));
+                          rows.push(["Failed (OCR)", String(ocrFailedCount)].join(","));
+                          rows.push("");
+                          rows.push(["File Name", "Brand name", "Class/Type", "Alcohol content", "Net contents", "Bottler/Producer", "Country of origin", "Government warning", "Alcohol content abbr", "Issues", "Duration (s)"].join(","));
                           for (const r of results) {
                             if (r.status !== "success") {
-                              rows.push([esc(r.fileName), "", "", "", "", "", "OCR Failed", ""].join(","));
+                              rows.push([esc(r.fileName), "", "", "", "", "", "", "", "", "OCR Failed", ""].join(","));
                               continue;
                             }
                             const fieldStatus = (f: string) => r.checks.find((c) => c.field === f)?.status ?? "—";
@@ -1592,7 +1629,10 @@ export default function Home() {
                               fieldStatus("classType"),
                               fieldStatus("alcoholContent"),
                               fieldStatus("netContents"),
+                              fieldStatus("bottlerNameAddress"),
+                              fieldStatus("countryOfOrigin"),
                               fieldStatus("governmentWarning"),
+                              fieldStatus("alcoholContentFormat"),
                               String(issues),
                               (r.durationMs / 1000).toFixed(1),
                             ].join(","));
@@ -2136,7 +2176,7 @@ export default function Home() {
                                     [currentCheck.field]: e.target.value,
                                   }))
                                 }
-                                className="mt-4 w-full rounded-[16px] border-2 border-[#E5E5EA] bg-white px-4 py-3 text-[17px] text-[#1C1C1E] placeholder:text-[#C7C7CC] focus:border-[#007AFF] focus:outline-none focus:ring-0"
+                                className="mt-4 w-full rounded-[16px] border-2 border-[#E5E5EA] bg-white px-4 py-3 text-[17px] text-[#1C1C1E] placeholder:text-[#C7C7CC] focus:border-[#8E8E93] focus:outline-none focus:ring-2 focus:ring-[#8E8E93]/20"
                                 style={{ minHeight: "52px" }}
                               />
                               {currentCheck.expected ? (
@@ -2198,8 +2238,13 @@ export default function Home() {
                           </p>
                         )}
                         <div
-                          className="rounded-[24px] bg-white p-8"
-                          style={{ boxShadow: "0 4px 16px rgba(0,0,0,0.06)" }}
+                          className="rounded-[24px] p-8"
+                          style={{
+                            boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
+                            background: hasFlags
+                              ? "linear-gradient(135deg, #E3F2FD 0%, #F5F9FF 100%)"
+                              : "linear-gradient(135deg, #E8F5E9 0%, #F1F8F4 100%)",
+                          }}
                         >
                           <div className="flex items-center gap-4">
                             <span
@@ -2218,21 +2263,21 @@ export default function Home() {
                           </div>
                           <div className="mt-5 flex flex-col gap-3">
                             {flaggedCount > 0 && (
-                              <div className="flex items-center gap-3 rounded-[12px] bg-[#F2F2F7] px-4 py-2.5">
-                                <span className="text-[15px] font-semibold text-[#D70015]">{flaggedCount}</span>
-                                <span className="text-[15px] text-[#3C3C43]">field{flaggedCount !== 1 ? "s" : ""} flagged as not matching</span>
+                              <div className="flex items-center gap-3 rounded-[12px] border border-[#FF3B30]/25 bg-[#FFE5E5] px-4 py-2.5">
+                                <span className="text-[15px] font-semibold text-[#FF3B30]">{flaggedCount}</span>
+                                <span className="text-[15px] text-[#FF3B30]">field{flaggedCount !== 1 ? "s" : ""} flagged as not matching</span>
                               </div>
                             )}
                             {acceptedCount > 0 && (
-                              <div className="flex items-center gap-3 rounded-[12px] bg-[#F2F2F7] px-4 py-2.5">
-                                <span className="text-[15px] font-semibold text-[#248A3D]">{acceptedCount}</span>
-                                <span className="text-[15px] text-[#3C3C43]">field{acceptedCount !== 1 ? "s" : ""} accepted by reviewer</span>
+                              <div className="flex items-center gap-3 rounded-[12px] border border-[#30D158]/25 bg-[#E8F5E9] px-4 py-2.5">
+                                <span className="text-[15px] font-semibold text-[#30D158]">{acceptedCount}</span>
+                                <span className="text-[15px] text-[#248A3D]">field{acceptedCount !== 1 ? "s" : ""} accepted by reviewer</span>
                               </div>
                             )}
                             {matchCount > 0 && (
-                              <div className="flex items-center gap-3 rounded-[12px] bg-[#F2F2F7] px-4 py-2.5">
-                                <span className="text-[15px] font-semibold text-[#248A3D]">{matchCount}</span>
-                                <span className="text-[15px] text-[#3C3C43]">field{matchCount !== 1 ? "s" : ""} matched automatically</span>
+                              <div className="flex items-center gap-3 rounded-[12px] border border-[#30D158]/25 bg-[#E8F5E9] px-4 py-2.5">
+                                <span className="text-[15px] font-semibold text-[#30D158]">{matchCount}</span>
+                                <span className="text-[15px] text-[#248A3D]">field{matchCount !== 1 ? "s" : ""} matched automatically</span>
                               </div>
                             )}
                           </div>
@@ -2240,8 +2285,7 @@ export default function Home() {
                             Processed in {durationSec} seconds
                           </p>
                           <div className="mt-8 flex flex-col gap-4">
-                            {results.length > 1 &&
-                              safeIndex < results.length - 1 ? (
+                            {results.length > 1 && safeIndex < results.length - 1 ? (
                               <button
                                 type="button"
                                 onClick={() => {
@@ -2256,6 +2300,20 @@ export default function Home() {
                                 }}
                               >
                                 Next Label
+                              </button>
+                            ) : safeIndex === results.length - 1 ? (
+                              <button
+                                type="button"
+                                onClick={() => setBatchTab("summary")}
+                                className="flex min-h-[56px] w-full items-center justify-center rounded-[24px] px-6 py-4 text-[17px] font-semibold text-white transition-transform duration-150 active:scale-[0.97]"
+                                style={{
+                                  background:
+                                    "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
+                                  boxShadow:
+                                    "0 4px 12px rgba(0, 122, 255, 0.25)",
+                                }}
+                              >
+                                View Batch Summary
                               </button>
                             ) : null}
                             <button
