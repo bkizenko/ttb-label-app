@@ -14,13 +14,18 @@ Schema:
   "netContents": "string or null",
   "bottlerNameAddress": "string or null",
   "countryOfOrigin": "string or null",
-  "governmentWarningText": "string or null"
+  "governmentWarningText": "string or null",
+  "governmentWarningHeaderIsAllCaps": true or false,
+  "governmentWarningHeaderIsBold": true or false
 }
 
 Rules:
 - Preserve the label's wording exactly for governmentWarningText.
 - brandName should be the complete brand name exactly as printed (include all words).
-- If a field is not visible on the label, set it to null.`;
+- If a field is not visible on the label, set it to null.
+- governmentWarningHeaderIsAllCaps: true if the header reads "GOVERNMENT WARNING" in all capital letters, false if it uses title case or lowercase.
+- governmentWarningHeaderIsBold: true if the "GOVERNMENT WARNING" header appears visually bolder/heavier than the surrounding warning body text.
+- If government warning is not visible, set governmentWarningText to null and both booleans to false.`;
 
 export async function POST(req: NextRequest) {
   const t0 = Date.now();
@@ -54,21 +59,35 @@ export async function POST(req: NextRequest) {
     generationConfig: { temperature: 0 },
   });
 
+  const MAX_RETRIES = 3;
   const apiStart = Date.now();
   let rawText: string;
-  try {
-    const result = await model.generateContent([
-      { inlineData: { data: imageBase64, mimeType } },
-      OCR_PROMPT,
-    ]);
-    rawText = result.response.text() ?? "";
-    console.log("[OCR] Gemini API", Date.now() - apiStart, "ms");
-  } catch (error) {
-    console.error(
-      "[OCR] Full error:",
-      JSON.stringify(error, Object.getOwnPropertyNames(error)),
-    );
-    const message = error instanceof Error ? error.message : String(error);
+  let lastError: unknown;
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const result = await model.generateContent([
+        { inlineData: { data: imageBase64, mimeType } },
+        OCR_PROMPT,
+      ]);
+      rawText = result.response.text() ?? "";
+      console.log("[OCR] Gemini API", Date.now() - apiStart, "ms", attempt > 0 ? `(retry ${attempt})` : "");
+      lastError = null;
+      break;
+    } catch (error) {
+      lastError = error;
+      const msg = error instanceof Error ? error.message : String(error);
+      const isRateLimit = msg.includes("429") || msg.toLowerCase().includes("rate") || msg.toLowerCase().includes("quota");
+      if (isRateLimit && attempt < MAX_RETRIES - 1) {
+        const backoffMs = 1000 * Math.pow(2, attempt);
+        console.log(`[OCR] Rate limited, retrying in ${backoffMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+        await new Promise((r) => setTimeout(r, backoffMs));
+        continue;
+      }
+      console.error("[OCR] Full error:", JSON.stringify(error, Object.getOwnPropertyNames(error)));
+    }
+  }
+  if (lastError || !rawText!) {
+    const message = lastError instanceof Error ? lastError.message : String(lastError ?? "OCR failed");
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
@@ -113,6 +132,8 @@ export async function POST(req: NextRequest) {
       bottlerNameAddress,
       countryOfOrigin,
       governmentWarningText: govWarning,
+      governmentWarningHeaderIsAllCaps: parsed.governmentWarningHeaderIsAllCaps === true,
+      governmentWarningHeaderIsBold: parsed.governmentWarningHeaderIsBold === true,
     };
   } catch {
     console.log("[OCR] JSON parse failed, returning raw text only");

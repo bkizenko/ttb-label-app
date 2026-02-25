@@ -1,5 +1,3 @@
-export type BeverageType = "distilled_spirits" | "wine" | "beer" | "";
-
 export type ApplicationLabelData = {
   brandName: string;
   classType: string;
@@ -8,7 +6,6 @@ export type ApplicationLabelData = {
   bottlerNameAddress: string;
   countryOfOrigin: string;
   governmentWarning: string;
-  beverageType?: BeverageType;
 };
 
 export type ExtractedLabelData = {
@@ -19,6 +16,8 @@ export type ExtractedLabelData = {
   bottlerNameAddress?: string;
   countryOfOrigin?: string;
   governmentWarningText?: string;
+  governmentWarningHeaderIsAllCaps?: boolean;
+  governmentWarningHeaderIsBold?: boolean;
 };
 
 export type FieldCheckStatus = "match" | "mismatch" | "missing";
@@ -335,8 +334,7 @@ export const compareLabelData = (
     }
   }
 
-  // Government warning: single consolidated check (text comparison only — reliable)
-  // Removes the AI-dependent header/bold boolean checks that caused run-to-run inconsistency.
+  // Government warning: unified check covering text, all-caps header, and bold header.
   const expectedWarning = normalizeWhitespace(application.governmentWarning);
   const actualWarning = extracted.governmentWarningText
     ? normalizeWhitespace(extracted.governmentWarningText)
@@ -354,17 +352,26 @@ export const compareLabelData = (
   } else {
     const expectedNormalized = normalizeForLooseMatch(expectedWarning);
     const actualNormalized = normalizeForLooseMatch(actualWarning);
-    const isMatch = expectedNormalized === actualNormalized;
+    const textMatches = expectedNormalized === actualNormalized;
+    const capsOk = extracted.governmentWarningHeaderIsAllCaps !== false;
+    const boldOk = extracted.governmentWarningHeaderIsBold !== false;
+
+    const issues: string[] = [];
+    if (!textMatches) issues.push("Warning text does not match word-for-word");
+    if (!capsOk) issues.push("'GOVERNMENT WARNING' header is not in all caps");
+    if (!boldOk) issues.push("'GOVERNMENT WARNING' header is not bold");
+
+    const allGood = textMatches && capsOk && boldOk;
 
     checks.push({
       field: "governmentWarning",
-      status: isMatch ? "match" : "mismatch",
+      status: allGood ? "match" : "mismatch",
       expected: expectedWarning,
       actual: actualWarning,
-      notes: isMatch
+      notes: allGood
         ? undefined
-        : "Warning text must match exactly. Verify 'GOVERNMENT WARNING:' appears in all caps and bold per 27 CFR § 16.21.",
-      noteHref: isMatch
+        : issues.join(". ") + ". Per 27 CFR § 16.21.",
+      noteHref: allGood
         ? undefined
         : "https://www.ecfr.gov/current/title-27/chapter-I/subchapter-A/part-16",
     });

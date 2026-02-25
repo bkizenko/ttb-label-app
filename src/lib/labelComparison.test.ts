@@ -368,4 +368,42 @@ describe("compareLabelData", () => {
     const checks = compareLabelData(appWithBlankCountry, extracted);
     expect(checks.find((c) => c.field === "countryOfOrigin")).toBeUndefined();
   });
+
+  it("rejects title-case 'Government Warning' header as not all-caps", () => {
+    const extracted: ExtractedLabelData = {
+      ...baseApplication,
+      governmentWarningText: STANDARD_GOVERNMENT_WARNING,
+      governmentWarningHeaderIsAllCaps: false,
+      governmentWarningHeaderIsBold: true,
+    };
+    const checks = compareLabelData(baseApplication, extracted);
+    const warningCheck = checks.find((c) => c.field === "governmentWarning");
+    expect(warningCheck?.status).toBe("mismatch");
+    expect(warningCheck?.notes).toContain("not in all caps");
+  });
+
+  it("rejects non-bold government warning header", () => {
+    const extracted: ExtractedLabelData = {
+      ...baseApplication,
+      governmentWarningText: STANDARD_GOVERNMENT_WARNING,
+      governmentWarningHeaderIsAllCaps: true,
+      governmentWarningHeaderIsBold: false,
+    };
+    const checks = compareLabelData(baseApplication, extracted);
+    const warningCheck = checks.find((c) => c.field === "governmentWarning");
+    expect(warningCheck?.status).toBe("mismatch");
+    expect(warningCheck?.notes).toContain("not bold");
+  });
+
+  it("passes gov warning when text matches and header is all-caps and bold", () => {
+    const extracted: ExtractedLabelData = {
+      ...baseApplication,
+      governmentWarningText: STANDARD_GOVERNMENT_WARNING,
+      governmentWarningHeaderIsAllCaps: true,
+      governmentWarningHeaderIsBold: true,
+    };
+    const checks = compareLabelData(baseApplication, extracted);
+    const warningCheck = checks.find((c) => c.field === "governmentWarning");
+    expect(warningCheck?.status).toBe("match");
+  });
 });

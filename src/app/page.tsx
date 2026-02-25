@@ -34,7 +34,6 @@ const defaultApplicationData: ApplicationLabelData = {
   bottlerNameAddress: "",
   countryOfOrigin: "",
   governmentWarning: STANDARD_GOVERNMENT_WARNING,
-  beverageType: "distilled_spirits",
 };
 
 const extractFromOcrText = (text: string): ExtractedLabelData => {
@@ -248,6 +247,8 @@ async function ocrImage(
         typeof parsed.governmentWarningText === "string"
           ? strip(parsed.governmentWarningText)
           : undefined,
+      governmentWarningHeaderIsAllCaps: parsed.governmentWarningHeaderIsAllCaps === true,
+      governmentWarningHeaderIsBold: parsed.governmentWarningHeaderIsBold === true,
     };
 
     return { text, extracted };
@@ -361,6 +362,7 @@ export default function Home() {
   const [manualOverrides, setManualOverrides] = useState<
     Record<string, string>
   >({});
+  const [flaggedFields, setFlaggedFields] = useState<Set<string>>(new Set());
   const replaceFileInputRef = useRef<HTMLInputElement>(null);
   const [replacingResultIndex, setReplacingResultIndex] = useState<
     number | null
@@ -468,6 +470,11 @@ export default function Home() {
       setResults([]);
       setError(null);
       setCatastrophicError(null);
+      setReviewMode("summary");
+      setCurrentReviewIndex(0);
+      setManualOverrides({});
+      setFlaggedFields(new Set());
+      setCurrentResultIndex(0);
       setProgressMessage("Reading label...");
       setProcessingTotal(files.length);
       setProcessingCurrent(0);
@@ -659,6 +666,7 @@ export default function Home() {
     setProgressCardDismissed(false);
     setBatchTab("detail");
     setConfirmingReset(false);
+    setFlaggedFields(new Set());
   };
 
   /* Keyboard shortcuts (enhance only; every action has a visible button) */
@@ -707,6 +715,7 @@ export default function Home() {
     setReviewMode("summary");
     setCurrentReviewIndex(0);
     setManualOverrides({});
+    setFlaggedFields(new Set());
     setGovWarningExpanded(false);
     setConfirmingReset(false);
   }, [currentResultIndex]);
@@ -1087,31 +1096,6 @@ export default function Home() {
                   Application record
                 </p>
 
-                <div className="step2-field-in space-y-1.5">
-                  <label
-                    htmlFor="beverage-type"
-                    className="block text-[14px] font-medium text-[#8E8E93]"
-                  >
-                    Beverage type
-                  </label>
-                  <select
-                    id="beverage-type"
-                    value={applicationData.beverageType ?? ""}
-                    onChange={(event) =>
-                      setApplicationData((current) => ({
-                        ...current,
-                        beverageType: event.target.value as ApplicationLabelData["beverageType"],
-                      }))
-                    }
-                    className="input-apple h-14 w-full rounded-[16px] border border-[#E5E5EA] bg-white px-4 text-[16px] text-[#1C1C1E]"
-                    style={{ minHeight: "56px" }}
-                  >
-                    <option value="">Select type…</option>
-                    <option value="distilled_spirits">Distilled Spirits</option>
-                    <option value="wine">Wine</option>
-                    <option value="beer">Beer / Malt Beverage</option>
-                  </select>
-                </div>
 
                 <div
                   className="step2-field-in"
@@ -1677,7 +1661,70 @@ export default function Home() {
 
           <main className="flex flex-col gap-10">
             {batchTab === "summary" && results.length > 1 ? (
-              <section className="mx-auto flex w-full max-w-[600px] flex-col gap-3">
+              <section className="mx-auto flex w-full max-w-[600px] flex-col gap-4">
+                {/* Aggregate stats */}
+                {(() => {
+                  const passedCount = results.filter((r) => r.status === "success" && r.checks.every((c) => c.status === "match")).length;
+                  const reviewCount = results.filter((r) => r.status === "success" && r.checks.some((c) => c.status !== "match")).length;
+                  const ocrFailedCount = results.filter((r) => r.status === "ocr_failed").length;
+                  const avgMs = results.filter((r) => r.status === "success").reduce((sum, r) => sum + (r.status === "success" ? r.durationMs : 0), 0) / Math.max(1, results.filter((r) => r.status === "success").length);
+                  return (
+                    <div className="rounded-[20px] bg-white p-5 depth-1">
+                      <p className="text-[13px] font-semibold uppercase tracking-wide text-[#8E8E93]">Batch summary</p>
+                      <div className="mt-3 grid grid-cols-3 gap-3">
+                        <div className="rounded-[12px] bg-[#F0FFF4] px-3 py-2.5 text-center">
+                          <p className="text-[22px] font-bold text-[#248A3D]">{passedCount}</p>
+                          <p className="text-[12px] text-[#3C3C43]">Passed</p>
+                        </div>
+                        <div className="rounded-[12px] bg-[#FFF8E1] px-3 py-2.5 text-center">
+                          <p className="text-[22px] font-bold text-[#FF9500]">{reviewCount}</p>
+                          <p className="text-[12px] text-[#3C3C43]">Need review</p>
+                        </div>
+                        <div className="rounded-[12px] bg-[#FFF5F5] px-3 py-2.5 text-center">
+                          <p className="text-[22px] font-bold text-[#D70015]">{ocrFailedCount}</p>
+                          <p className="text-[12px] text-[#3C3C43]">Failed</p>
+                        </div>
+                      </div>
+                      <p className="mt-3 text-[13px] text-[#8E8E93]">
+                        {results.length} labels &middot; avg {(avgMs / 1000).toFixed(1)}s per label
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
+                          const rows = [["File Name", "Brand Name", "Class/Type", "Alcohol Content", "Net Contents", "Gov Warning", "Issues", "Duration (s)"].join(",")];
+                          for (const r of results) {
+                            if (r.status !== "success") {
+                              rows.push([esc(r.fileName), "", "", "", "", "", "OCR Failed", ""].join(","));
+                              continue;
+                            }
+                            const fieldStatus = (f: string) => r.checks.find((c) => c.field === f)?.status ?? "—";
+                            const issues = r.checks.filter((c) => c.status !== "match").length;
+                            rows.push([
+                              esc(r.fileName),
+                              fieldStatus("brandName"),
+                              fieldStatus("classType"),
+                              fieldStatus("alcoholContent"),
+                              fieldStatus("netContents"),
+                              fieldStatus("governmentWarning"),
+                              String(issues),
+                              (r.durationMs / 1000).toFixed(1),
+                            ].join(","));
+                          }
+                          const blob = new Blob([rows.join("\n")], { type: "text/csv" });
+                          const a = document.createElement("a");
+                          a.href = URL.createObjectURL(blob);
+                          a.download = `batch-results-${new Date().toISOString().slice(0, 10)}.csv`;
+                          a.click();
+                          URL.revokeObjectURL(a.href);
+                        }}
+                        className="mt-4 flex min-h-[48px] w-full items-center justify-center rounded-[16px] border-2 border-[#E5E5EA] bg-white px-4 py-2.5 text-[15px] font-semibold text-[#1C1C1E] transition-all duration-150 active:scale-[0.98] hover:bg-[#F2F2F7]"
+                      >
+                        Export All as CSV
+                      </button>
+                    </div>
+                  );
+                })()}
                 {results.map((result, i) => {
                   const isSuccess = result.status === "success";
                   const hasIssues =
@@ -1824,7 +1871,6 @@ export default function Home() {
                     countryOfOrigin: "Country of origin",
                     governmentWarning: "Government warning",
                     alcoholContentFormat: "Alcohol content abbreviation",
-                    beverageType: "Beverage type",
                   };
                   const fieldsNeedingReview = activeResult.checks.filter(
                     (c) =>
@@ -2156,22 +2202,23 @@ export default function Home() {
                                       setCurrentReviewIndex((i) => i + 1);
                                     }
                                   }}
-                                  className="flex min-h-[56px] w-full items-center justify-center rounded-[24px] bg-[#007AFF] px-6 py-4 text-[17px] font-semibold text-white transition-transform duration-150 active:scale-[0.97]"
+                                  className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[16px] border-2 border-[#34C759] bg-[#F0FFF4] px-6 py-4 text-[17px] font-semibold text-[#248A3D] transition-all duration-150 active:scale-[0.97] hover:bg-[#E5F9EC]"
                                 >
-                                  Accept Match
+                                  <span aria-hidden>✓</span> Accept — Values Match
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => {
+                                    setFlaggedFields((prev) => new Set(prev).add(currentCheck.field));
                                     if (isLastField) {
                                       setReviewMode("complete");
                                     } else {
                                       setCurrentReviewIndex((i) => i + 1);
                                     }
                                   }}
-                                  className="min-h-[44px] text-center text-[16px] font-normal text-[#8E8E93] hover:text-[#1C1C1E]"
+                                  className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[16px] border-2 border-[#FF453A] bg-[#FFF5F5] px-6 py-4 text-[17px] font-semibold text-[#D70015] transition-all duration-150 active:scale-[0.97] hover:bg-[#FFECEC]"
                                 >
-                                  Flag for Review
+                                  <span aria-hidden>✕</span> Flag — Does Not Match
                                 </button>
                               </div>
                             </>
@@ -2237,6 +2284,9 @@ export default function Home() {
                       activeResult.status === "success"
                         ? (activeResult.durationMs / 1000).toFixed(1)
                         : "—";
+                    const flaggedCount = flaggedFields.size;
+                    const acceptedCount = totalReviewCount - flaggedCount;
+                    const hasFlags = flaggedCount > 0;
                     return (
                       <section className="mx-auto flex max-w-[600px] flex-col gap-8">
                         {results.length > 1 && (
@@ -2246,29 +2296,43 @@ export default function Home() {
                         )}
                         <div
                           className="rounded-[24px] bg-white p-8"
-                          style={{
-                            boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
-                          }}
+                          style={{ boxShadow: "0 4px 16px rgba(0,0,0,0.06)" }}
                         >
                           <div className="flex items-center gap-4">
                             <span
-                              className="flex h-12 w-12 shrink-0 items-center justify-center text-[48px] leading-none text-[#30D158]"
+                              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[20px] font-bold leading-none"
+                              style={{
+                                color: hasFlags ? "#D70015" : "#248A3D",
+                                background: hasFlags ? "#FFF0F0" : "#F0FFF4",
+                              }}
                               aria-hidden
                             >
-                              ✓
+                              {hasFlags ? "!" : "✓"}
                             </span>
                             <h2 className="text-[22px] font-semibold tracking-tight text-[#1C1C1E]">
-                              Review complete
+                              {hasFlags ? "Label needs attention" : "Label verified"}
                             </h2>
                           </div>
-                          <p className="mt-4 text-[17px] font-normal text-[#1C1C1E]">
-                            {totalReviewCount} field
-                            {totalReviewCount !== 1 ? "s" : ""} reviewed
-                          </p>
-                          <p className="mt-1 text-[15px] font-normal text-[#8E8E93]">
-                            {matchCount} field
-                            {matchCount !== 1 ? "s" : ""} matched automatically
-                          </p>
+                          <div className="mt-5 flex flex-col gap-3">
+                            {flaggedCount > 0 && (
+                              <div className="flex items-center gap-3 rounded-[12px] bg-[#FFF5F5] px-4 py-2.5">
+                                <span className="text-[15px] font-semibold text-[#D70015]">{flaggedCount}</span>
+                                <span className="text-[15px] text-[#3C3C43]">field{flaggedCount !== 1 ? "s" : ""} flagged as not matching</span>
+                              </div>
+                            )}
+                            {acceptedCount > 0 && (
+                              <div className="flex items-center gap-3 rounded-[12px] bg-[#F0FFF4] px-4 py-2.5">
+                                <span className="text-[15px] font-semibold text-[#248A3D]">{acceptedCount}</span>
+                                <span className="text-[15px] text-[#3C3C43]">field{acceptedCount !== 1 ? "s" : ""} accepted by reviewer</span>
+                              </div>
+                            )}
+                            {matchCount > 0 && (
+                              <div className="flex items-center gap-3 rounded-[12px] bg-[#F0FFF4] px-4 py-2.5">
+                                <span className="text-[15px] font-semibold text-[#248A3D]">{matchCount}</span>
+                                <span className="text-[15px] text-[#3C3C43]">field{matchCount !== 1 ? "s" : ""} matched automatically</span>
+                              </div>
+                            )}
+                          </div>
                           <p className="mt-5 text-[15px] font-normal text-[#8E8E93]">
                             Processed in {durationSec} seconds
                           </p>
@@ -2276,29 +2340,34 @@ export default function Home() {
                             <button
                               type="button"
                               onClick={() => {
-                                const data = {
-                                  fileName: activeResult.fileName,
-                                  matchCount,
-                                  reviewedCount: totalReviewCount,
-                                  durationMs:
-                                    activeResult.status === "success"
-                                      ? activeResult.durationMs
-                                      : 0,
-                                  manualOverrides,
+                                const FIELD_LABELS: Record<string, string> = {
+                                  brandName: "Brand name", classType: "Class/Type",
+                                  alcoholContent: "Alcohol content", netContents: "Net contents",
+                                  bottlerNameAddress: "Bottler/Producer", countryOfOrigin: "Country of origin",
+                                  governmentWarning: "Government warning", alcoholContentFormat: "ABV format",
                                 };
-                                const blob = new Blob(
-                                  [JSON.stringify(data, null, 2)],
-                                  { type: "application/json" },
-                                );
+                                const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
+                                const rows = [["File Name", "Field", "Status", "Expected", "Found on Label", "Notes"].join(",")];
+                                for (const check of activeResult.checks) {
+                                  rows.push([
+                                    esc(activeResult.fileName),
+                                    esc(FIELD_LABELS[check.field] ?? check.field),
+                                    check.status,
+                                    esc(check.expected ?? ""),
+                                    esc(check.actual ?? ""),
+                                    esc(check.notes ?? ""),
+                                  ].join(","));
+                                }
+                                const blob = new Blob([rows.join("\n")], { type: "text/csv" });
                                 const a = document.createElement("a");
                                 a.href = URL.createObjectURL(blob);
-                                a.download = `label-result-${activeResult.fileName.replace(/\.[^.]+$/, "")}.json`;
+                                a.download = `label-result-${activeResult.fileName.replace(/\.[^.]+$/, "")}.csv`;
                                 a.click();
                                 URL.revokeObjectURL(a.href);
                               }}
                               className="flex min-h-[56px] w-full items-center justify-center rounded-[24px] border-2 border-[#E5E5EA] bg-white px-6 py-4 text-[17px] font-semibold text-[#1C1C1E] transition-transform duration-150 active:scale-[0.97] hover:bg-[#F2F2F7]"
                             >
-                              Export Results
+                              Export as CSV
                             </button>
                             {results.length > 1 &&
                               safeIndex < results.length - 1 ? (
