@@ -27,9 +27,9 @@ type VerificationResult =
 type Mode = "single" | "batch";
 
 const defaultApplicationData: ApplicationLabelData = {
-  brandName: "OLD TOM DISTILLERY",
+  brandName: "NEW TOM DISTILLERY",
   classType: "Kentucky Straight Bourbon Whiskey",
-  alcoholContent: "45% Alc./Vol. (90 Proof)",
+  alcoholContent: "40% Alc./Vol. (80 Proof)",
   netContents: "750 mL",
   bottlerNameAddress: "",
   countryOfOrigin: "",
@@ -370,20 +370,22 @@ export default function Home() {
   const [pendingReplaceResultIndex, setPendingReplaceResultIndex] = useState<
     number | null
   >(null);
-  const [progressCardDismissed, setProgressCardDismissed] = useState(false);
   const [govWarningExpanded, setGovWarningExpanded] = useState(false);
   const [batchTab, setBatchTab] = useState<"summary" | "detail">("detail");
   const [confirmingReset, setConfirmingReset] = useState(false);
-  const [processingCurrentDebounced, setProcessingCurrentDebounced] =
-    useState(0);
   const [processingPreviewUrl, setProcessingPreviewUrl] = useState<
     string | null
   >(null);
   const processingThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [processingFieldLabel, setProcessingFieldLabel] = useState("");
+  const [processingElapsedMs, setProcessingElapsedMs] = useState(0);
+  const processingTimerStart = useRef(0);
+  const [batchStartTime, setBatchStartTime] = useState(0);
 
   useEffect(() => {
     if (isProcessing && fileList.length > 0) {
-      const url = URL.createObjectURL(fileList[0]);
+      const idx = Math.min(processingCurrent, fileList.length - 1);
+      const url = URL.createObjectURL(fileList[idx]);
       setProcessingPreviewUrl(url);
       return () => {
         URL.revokeObjectURL(url);
@@ -391,7 +393,27 @@ export default function Home() {
       };
     }
     setProcessingPreviewUrl(null);
-  }, [isProcessing, fileList]);
+  }, [isProcessing, fileList, processingCurrent]);
+
+  useEffect(() => {
+    if (!isProcessing) {
+      setProcessingFieldLabel("");
+      setProcessingElapsedMs(0);
+      return;
+    }
+    const fields = ["Brand name", "Class/Type", "Alcohol content", "Net contents", "Bottler/Producer", "Country of origin", "Government warning"];
+    let i = 0;
+    setProcessingFieldLabel(fields[0]);
+    const cycle = setInterval(() => {
+      i = (i + 1) % fields.length;
+      setProcessingFieldLabel(fields[i]);
+    }, 800);
+    processingTimerStart.current = performance.now();
+    const tick = setInterval(() => {
+      setProcessingElapsedMs(performance.now() - processingTimerStart.current);
+    }, 200);
+    return () => { clearInterval(cycle); clearInterval(tick); };
+  }, [isProcessing, processingCurrent]);
 
   const handleFilesSelected = (files: FileList | null) => {
     if (!files) return;
@@ -478,6 +500,7 @@ export default function Home() {
       setProgressMessage("Reading label...");
       setProcessingTotal(files.length);
       setProcessingCurrent(0);
+      setBatchStartTime(performance.now());
 
       try {
         const newResults: VerificationResult[] = [];
@@ -485,11 +508,6 @@ export default function Home() {
 
         for (let batchStart = 0; batchStart < files.length; batchStart += BATCH_SIZE) {
           const batchEnd = Math.min(batchStart + BATCH_SIZE, files.length);
-          setProgressMessage(
-            files.length === 1
-              ? "Reading label..."
-              : `Reading labels ${batchStart + 1}–${batchEnd} of ${files.length}...`,
-          );
 
           const batchItems = files.slice(batchStart, batchEnd).map((file, i) => ({
             file,
@@ -501,6 +519,7 @@ export default function Home() {
 
           const batchResults = await Promise.all(
             batchItems.map(async ({ file, index, appData }) => {
+              setProcessingCurrent(index);
               const start = performance.now();
               try {
                 const { text: ocrText, extracted: extractedFromApi } =
@@ -629,23 +648,6 @@ export default function Home() {
 
   const scrollToFirstFailedRef = useRef<HTMLDivElement>(null);
 
-  /* Debounce progress to ~10Hz for animation performance */
-  useEffect(() => {
-    if (processingCurrent === processingCurrentDebounced) return;
-    const t = processingThrottleRef.current;
-    if (t) clearTimeout(t);
-    processingThrottleRef.current = setTimeout(
-      () => setProcessingCurrentDebounced(processingCurrent),
-      100,
-    );
-    return () => {
-      if (processingThrottleRef.current) clearTimeout(processingThrottleRef.current);
-    };
-  }, [processingCurrent, processingTotal, processingCurrentDebounced]);
-
-  useEffect(() => {
-    if (!isProcessing) setProcessingCurrentDebounced(0);
-  }, [isProcessing]);
 
   const resetWizard = () => {
     setMode("single");
@@ -663,7 +665,6 @@ export default function Home() {
     setCurrentResultIndex(0);
     setReplacingResultIndex(null);
     setPendingReplaceResultIndex(null);
-    setProgressCardDismissed(false);
     setBatchTab("detail");
     setConfirmingReset(false);
     setFlaggedFields(new Set());
@@ -1321,7 +1322,7 @@ export default function Home() {
             </p>
           </main>
         </div>
-        {isProcessing && fileList.length === 1 && (
+        {isProcessing && (
           <div
             className="animate-loading-screen-in fixed inset-0 z-50 flex flex-col items-center overflow-y-auto bg-[#F5F7FA] px-4 pt-12 pb-10"
             aria-live="polite"
@@ -1338,20 +1339,46 @@ export default function Home() {
                 <div className="h-[200px] w-[280px] shrink-0 rounded-[20px] bg-[#E5E5EA] depth-1" />
               )}
               <p className="mt-5 text-[17px] font-semibold text-[#1C1C1E]">
-                Analyzing label...
+                {processingTotal > 1
+                  ? `Processing label ${processingCurrent} of ${processingTotal}`
+                  : "Analyzing label..."}
+              </p>
+              <p className="mt-1 text-[14px] text-[#8E8E93]">
+                {processingFieldLabel ? `Checking ${processingFieldLabel}...` : "Starting..."}
+              </p>
+              <p className="mt-1 text-[13px] font-medium tabular-nums text-[#C7C7CC]">
+                {(processingElapsedMs / 1000).toFixed(1)}s
               </p>
             </div>
+            {processingTotal > 1 && (
+              <div className="mx-auto mt-4 w-full max-w-[600px]">
+                <div
+                  className="h-1.5 w-full overflow-hidden rounded-full bg-[#E5E5EA]"
+                  role="progressbar"
+                  aria-valuenow={processingCurrent}
+                  aria-valuemin={0}
+                  aria-valuemax={processingTotal}
+                >
+                  <div
+                    className="h-full rounded-full bg-[#007AFF] transition-all duration-300 ease-out"
+                    style={{
+                      width: processingTotal
+                        ? `${(processingCurrent / processingTotal) * 100}%`
+                        : "0%",
+                    }}
+                  />
+                </div>
+              </div>
+            )}
             <div className="animate-loading-content-in mx-auto mt-8 flex w-full max-w-[600px] flex-col gap-4" style={{ animationDelay: "0.15s" }}>
               {[
                 "Brand name",
                 "Class/Type",
                 "Alcohol content",
                 "Net contents",
-                  "Bottler/Producer name & address",
-                  "Country of origin",
-                "Government warning text",
-                  "GOVERNMENT WARNING header (all caps)",
-                  "GOVERNMENT WARNING header (bold)",
+                "Bottler/Producer name & address",
+                "Country of origin",
+                "Government warning",
               ].map((label) => (
                 <div key={label} className="flex flex-col gap-2">
                   <span className="text-[14px] font-medium text-[#8E8E93]">
@@ -1365,81 +1392,6 @@ export default function Home() {
               ))}
             </div>
           </div>
-        )}
-        {isProcessing && fileList.length >= 2 && (
-          <>
-            {!progressCardDismissed ? (
-              <div
-                className="progress-card-enter fixed bottom-0 left-0 right-0 z-50 flex justify-center px-0 sm:px-4"
-                aria-live="polite"
-                aria-busy="true"
-                style={{ willChange: "transform" }}
-              >
-                <div
-                  className="flex w-full max-w-[420px] flex-col gap-3 rounded-t-[20px] px-5 pb-5 pt-4"
-                  style={{
-                    background: "rgba(255, 255, 255, 0.82)",
-                    backdropFilter: "blur(40px)",
-                    WebkitBackdropFilter: "blur(40px)",
-                    boxShadow: "0 -4px 16px rgba(0, 0, 0, 0.06)",
-                    borderTop: "1px solid rgba(0, 0, 0, 0.04)",
-                    minHeight: "88px",
-                  }}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex min-h-[44px] min-w-[44px] items-center gap-3">
-                      <span
-                        className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-[#1C1C1E] border-t-transparent"
-                        aria-hidden
-                      />
-                      <span className="text-[17px] font-semibold text-[#1C1C1E]">
-                        Processing label {processingCurrentDebounced} of {processingTotal}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setProgressCardDismissed(true)}
-                      className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-[#8E8E93] transition-colors hover:bg-black/5 hover:text-[#1C1C1E]"
-                      aria-label="Dismiss progress"
-                    >
-                      ×
-                    </button>
-                  </div>
-                  <div
-                    className="h-1.5 w-full overflow-hidden rounded-full bg-[#E5E5EA]"
-                    role="progressbar"
-                    aria-valuenow={processingTotal ? processingCurrentDebounced : 0}
-                    aria-valuemin={0}
-                    aria-valuemax={processingTotal}
-                    aria-label={`Processing label ${processingCurrentDebounced} of ${processingTotal}`}
-                  >
-                    <div
-                      className="h-full rounded-full bg-[#007AFF] transition-all duration-300 ease-out"
-                      style={{
-                        width: processingTotal
-                          ? `${(processingCurrentDebounced / processingTotal) * 100}%`
-                          : "0%",
-                      }}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setStep(3)}
-                    className="min-h-[44px] text-[16px] font-semibold text-[#007AFF] hover:opacity-80"
-                  >
-                    Skip to results →
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div
-                className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-black/12 px-4 py-2 text-[14px] font-medium text-[#1C1C1E] backdrop-blur-md"
-                aria-live="polite"
-              >
-                Processing {processingCurrentDebounced}/{processingTotal}
-              </div>
-            )}
-          </>
         )}
       </div>
     );
@@ -1499,75 +1451,6 @@ export default function Home() {
             </div>
           </div>
         ) : null}
-        {/* Progress follows to Step 3 when user skipped to results (batch) */}
-        {isProcessing && fileList.length >= 2 && (
-          <>
-            {!progressCardDismissed ? (
-              <div
-                className="progress-card-enter fixed bottom-0 left-0 right-0 z-50 flex justify-center px-0 sm:px-4"
-                aria-live="polite"
-                aria-busy="true"
-                style={{ willChange: "transform" }}
-              >
-                <div
-                  className="flex w-full max-w-[420px] flex-col gap-3 rounded-t-[20px] px-5 pb-5 pt-4"
-                  style={{
-                    background: "rgba(255, 255, 255, 0.82)",
-                    backdropFilter: "blur(40px)",
-                    WebkitBackdropFilter: "blur(40px)",
-                    boxShadow: "0 -4px 16px rgba(0, 0, 0, 0.06)",
-                    borderTop: "1px solid rgba(0, 0, 0, 0.04)",
-                    minHeight: "88px",
-                  }}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex min-h-[44px] min-w-[44px] items-center gap-3">
-                      <span
-                        className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-[#1C1C1E] border-t-transparent"
-                        aria-hidden
-                      />
-                      <span className="text-[17px] font-semibold text-[#1C1C1E]">
-                        Processing label {processingCurrentDebounced} of {processingTotal}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setProgressCardDismissed(true)}
-                      className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-[#8E8E93] transition-colors hover:bg-black/5 hover:text-[#1C1C1E]"
-                      aria-label="Dismiss progress"
-                    >
-                      ×
-                    </button>
-                  </div>
-                  <div
-                    className="h-1.5 w-full overflow-hidden rounded-full bg-[#E5E5EA]"
-                    role="progressbar"
-                    aria-valuenow={processingTotal ? processingCurrentDebounced : 0}
-                    aria-valuemin={0}
-                    aria-valuemax={processingTotal}
-                    aria-label={`Processing label ${processingCurrentDebounced} of ${processingTotal}`}
-                  >
-                    <div
-                      className="h-full rounded-full bg-[#007AFF] transition-all duration-300 ease-out"
-                      style={{
-                        width: processingTotal
-                          ? `${(processingCurrentDebounced / processingTotal) * 100}%`
-                          : "0%",
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div
-                className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-black/12 px-4 py-2 text-[14px] font-medium text-[#1C1C1E] backdrop-blur-md"
-                aria-live="polite"
-              >
-                Processing {processingCurrentDebounced}/{processingTotal}
-              </div>
-            )}
-          </>
-        )}
       <div className="min-h-screen depth-0 text-[#1C1C1E]">
         <div
           className="animate-fade-scale-in mx-auto flex max-w-5xl flex-col gap-10 px-4 py-10"
@@ -1667,27 +1550,30 @@ export default function Home() {
                   const passedCount = results.filter((r) => r.status === "success" && r.checks.every((c) => c.status === "match")).length;
                   const reviewCount = results.filter((r) => r.status === "success" && r.checks.some((c) => c.status !== "match")).length;
                   const ocrFailedCount = results.filter((r) => r.status === "ocr_failed").length;
-                  const avgMs = results.filter((r) => r.status === "success").reduce((sum, r) => sum + (r.status === "success" ? r.durationMs : 0), 0) / Math.max(1, results.filter((r) => r.status === "success").length);
+                  const totalMs = results.filter((r) => r.status === "success").reduce((sum, r) => sum + (r.status === "success" ? r.durationMs : 0), 0);
+                  const avgMs = totalMs / Math.max(1, results.filter((r) => r.status === "success").length);
+                  const totalSec = totalMs / 1000;
+                  const totalTimeStr = totalSec >= 60 ? `${Math.floor(totalSec / 60)}m ${Math.round(totalSec % 60)}s` : `${totalSec.toFixed(1)}s`;
                   return (
                     <div className="rounded-[20px] bg-white p-5 depth-1">
-                      <p className="text-[13px] font-semibold uppercase tracking-wide text-[#8E8E93]">Batch summary</p>
-                      <div className="mt-3 grid grid-cols-3 gap-3">
-                        <div className="rounded-[12px] bg-[#F0FFF4] px-3 py-2.5 text-center">
+                      <p className="text-[17px] font-semibold text-[#1C1C1E]">Verification Complete</p>
+                      <p className="mt-1 text-[13px] text-[#8E8E93]">
+                        {results.length} labels processed in {totalTimeStr} &middot; avg {(avgMs / 1000).toFixed(1)}s per label
+                      </p>
+                      <div className="mt-4 grid grid-cols-3 gap-3">
+                        <div className="rounded-[12px] bg-[#F2F2F7] px-3 py-2.5 text-center">
                           <p className="text-[22px] font-bold text-[#248A3D]">{passedCount}</p>
                           <p className="text-[12px] text-[#3C3C43]">Passed</p>
                         </div>
-                        <div className="rounded-[12px] bg-[#FFF8E1] px-3 py-2.5 text-center">
+                        <div className="rounded-[12px] bg-[#F2F2F7] px-3 py-2.5 text-center">
                           <p className="text-[22px] font-bold text-[#FF9500]">{reviewCount}</p>
                           <p className="text-[12px] text-[#3C3C43]">Need review</p>
                         </div>
-                        <div className="rounded-[12px] bg-[#FFF5F5] px-3 py-2.5 text-center">
+                        <div className="rounded-[12px] bg-[#F2F2F7] px-3 py-2.5 text-center">
                           <p className="text-[22px] font-bold text-[#D70015]">{ocrFailedCount}</p>
                           <p className="text-[12px] text-[#3C3C43]">Failed</p>
                         </div>
                       </div>
-                      <p className="mt-3 text-[13px] text-[#8E8E93]">
-                        {results.length} labels &middot; avg {(avgMs / 1000).toFixed(1)}s per label
-                      </p>
                       <button
                         type="button"
                         onClick={() => {
@@ -1718,7 +1604,7 @@ export default function Home() {
                           a.click();
                           URL.revokeObjectURL(a.href);
                         }}
-                        className="mt-4 flex min-h-[48px] w-full items-center justify-center rounded-[16px] border-2 border-[#E5E5EA] bg-white px-4 py-2.5 text-[15px] font-semibold text-[#1C1C1E] transition-all duration-150 active:scale-[0.98] hover:bg-[#F2F2F7]"
+                        className="mt-4 flex min-h-[48px] w-full items-center justify-center rounded-[16px] border-2 border-[#E5E5EA] bg-white px-4 py-2.5 text-[15px] font-semibold text-[#1C1C1E] transition-all duration-500 active:scale-[0.98] hover:scale-[1.02]"
                       >
                         Export All as CSV
                       </button>
@@ -1735,6 +1621,7 @@ export default function Home() {
                     ? result.checks.filter((c) => c.status !== "match").length
                     : 0;
                   const icon = isFailed ? "❌" : hasIssues ? "⚠️" : "✅";
+                  const durationStr = isSuccess ? `${(result.durationMs / 1000).toFixed(1)}s` : "";
                   const statusText = isFailed
                     ? "Could not read label"
                     : hasIssues
@@ -1756,7 +1643,7 @@ export default function Home() {
                           {result.fileName}
                         </p>
                         <p className="mt-0.5 text-[14px] text-[#8E8E93]">
-                          {statusText}
+                          {statusText}{durationStr ? ` · ${durationStr}` : ""}
                         </p>
                       </div>
                       <span className="text-[22px] font-light text-[#C7C7CC]">
@@ -2202,7 +2089,7 @@ export default function Home() {
                                       setCurrentReviewIndex((i) => i + 1);
                                     }
                                   }}
-                                  className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[16px] border-2 border-[#34C759] bg-[#F0FFF4] px-6 py-4 text-[17px] font-semibold text-[#248A3D] transition-all duration-150 active:scale-[0.97] hover:bg-[#E5F9EC]"
+                                  className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[16px] border-2 border-[#34C759]/40 bg-[#F2F2F7] px-6 py-4 text-[17px] font-semibold text-[#248A3D] transition-all duration-500 active:scale-[0.97] hover:scale-[1.02]"
                                 >
                                   <span aria-hidden>✓</span> Accept — Values Match
                                 </button>
@@ -2216,7 +2103,7 @@ export default function Home() {
                                       setCurrentReviewIndex((i) => i + 1);
                                     }
                                   }}
-                                  className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[16px] border-2 border-[#FF453A] bg-[#FFF5F5] px-6 py-4 text-[17px] font-semibold text-[#D70015] transition-all duration-150 active:scale-[0.97] hover:bg-[#FFECEC]"
+                                  className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[16px] border-2 border-[#FF453A]/40 bg-[#F2F2F7] px-6 py-4 text-[17px] font-semibold text-[#D70015] transition-all duration-500 active:scale-[0.97] hover:scale-[1.02]"
                                 >
                                   <span aria-hidden>✕</span> Flag — Does Not Match
                                 </button>
@@ -2235,8 +2122,7 @@ export default function Home() {
                                 photo.
                               </p>
                               <p className="mt-2 text-[15px] font-normal text-[#8E8E93]">
-                                Small or angled text is harder for OCR to
-                                detect. Enter it manually:
+                                Enter the value manually, or flag as missing.
                               </p>
                               <input
                                 type="text"
@@ -2258,19 +2144,36 @@ export default function Home() {
                                   Expected: {currentCheck.expected}
                                 </p>
                               ) : null}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (isLastField) {
-                                    setReviewMode("complete");
-                                  } else {
-                                    setCurrentReviewIndex((i) => i + 1);
-                                  }
-                                }}
-                                className="mt-8 flex min-h-[56px] w-full items-center justify-center rounded-[24px] bg-[#007AFF] px-6 py-4 text-[17px] font-semibold text-white transition-transform duration-150 active:scale-[0.97]"
-                              >
-                                Continue
-                              </button>
+                              <div className="mt-8 flex flex-col gap-4">
+                                <button
+                                  type="button"
+                                  disabled={!(manualOverrides[currentCheck.field] ?? "").trim()}
+                                  onClick={() => {
+                                    if (isLastField) {
+                                      setReviewMode("complete");
+                                    } else {
+                                      setCurrentReviewIndex((i) => i + 1);
+                                    }
+                                  }}
+                                  className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[16px] border-2 border-[#34C759]/40 bg-[#F2F2F7] px-6 py-4 text-[17px] font-semibold text-[#248A3D] transition-all duration-500 active:scale-[0.97] hover:scale-[1.02] disabled:opacity-40 disabled:hover:scale-100"
+                                >
+                                  <span aria-hidden>✓</span> Accept — I Entered the Value
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setFlaggedFields((prev) => new Set(prev).add(currentCheck.field));
+                                    if (isLastField) {
+                                      setReviewMode("complete");
+                                    } else {
+                                      setCurrentReviewIndex((i) => i + 1);
+                                    }
+                                  }}
+                                  className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[16px] border-2 border-[#FF453A]/40 bg-[#F2F2F7] px-6 py-4 text-[17px] font-semibold text-[#D70015] transition-all duration-500 active:scale-[0.97] hover:scale-[1.02]"
+                                >
+                                  <span aria-hidden>✕</span> Flag — Field Missing from Label
+                                </button>
+                              </div>
                             </>
                           )}
                         </div>
@@ -2315,19 +2218,19 @@ export default function Home() {
                           </div>
                           <div className="mt-5 flex flex-col gap-3">
                             {flaggedCount > 0 && (
-                              <div className="flex items-center gap-3 rounded-[12px] bg-[#FFF5F5] px-4 py-2.5">
+                              <div className="flex items-center gap-3 rounded-[12px] bg-[#F2F2F7] px-4 py-2.5">
                                 <span className="text-[15px] font-semibold text-[#D70015]">{flaggedCount}</span>
                                 <span className="text-[15px] text-[#3C3C43]">field{flaggedCount !== 1 ? "s" : ""} flagged as not matching</span>
                               </div>
                             )}
                             {acceptedCount > 0 && (
-                              <div className="flex items-center gap-3 rounded-[12px] bg-[#F0FFF4] px-4 py-2.5">
+                              <div className="flex items-center gap-3 rounded-[12px] bg-[#F2F2F7] px-4 py-2.5">
                                 <span className="text-[15px] font-semibold text-[#248A3D]">{acceptedCount}</span>
                                 <span className="text-[15px] text-[#3C3C43]">field{acceptedCount !== 1 ? "s" : ""} accepted by reviewer</span>
                               </div>
                             )}
                             {matchCount > 0 && (
-                              <div className="flex items-center gap-3 rounded-[12px] bg-[#F0FFF4] px-4 py-2.5">
+                              <div className="flex items-center gap-3 rounded-[12px] bg-[#F2F2F7] px-4 py-2.5">
                                 <span className="text-[15px] font-semibold text-[#248A3D]">{matchCount}</span>
                                 <span className="text-[15px] text-[#3C3C43]">field{matchCount !== 1 ? "s" : ""} matched automatically</span>
                               </div>
@@ -2337,38 +2240,6 @@ export default function Home() {
                             Processed in {durationSec} seconds
                           </p>
                           <div className="mt-8 flex flex-col gap-4">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const FIELD_LABELS: Record<string, string> = {
-                                  brandName: "Brand name", classType: "Class/Type",
-                                  alcoholContent: "Alcohol content", netContents: "Net contents",
-                                  bottlerNameAddress: "Bottler/Producer", countryOfOrigin: "Country of origin",
-                                  governmentWarning: "Government warning", alcoholContentFormat: "ABV format",
-                                };
-                                const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
-                                const rows = [["File Name", "Field", "Status", "Expected", "Found on Label", "Notes"].join(",")];
-                                for (const check of activeResult.checks) {
-                                  rows.push([
-                                    esc(activeResult.fileName),
-                                    esc(FIELD_LABELS[check.field] ?? check.field),
-                                    check.status,
-                                    esc(check.expected ?? ""),
-                                    esc(check.actual ?? ""),
-                                    esc(check.notes ?? ""),
-                                  ].join(","));
-                                }
-                                const blob = new Blob([rows.join("\n")], { type: "text/csv" });
-                                const a = document.createElement("a");
-                                a.href = URL.createObjectURL(blob);
-                                a.download = `label-result-${activeResult.fileName.replace(/\.[^.]+$/, "")}.csv`;
-                                a.click();
-                                URL.revokeObjectURL(a.href);
-                              }}
-                              className="flex min-h-[56px] w-full items-center justify-center rounded-[24px] border-2 border-[#E5E5EA] bg-white px-6 py-4 text-[17px] font-semibold text-[#1C1C1E] transition-transform duration-150 active:scale-[0.97] hover:bg-[#F2F2F7]"
-                            >
-                              Export as CSV
-                            </button>
                             {results.length > 1 &&
                               safeIndex < results.length - 1 ? (
                               <button
