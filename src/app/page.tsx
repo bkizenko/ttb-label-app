@@ -363,6 +363,9 @@ export default function Home() {
     Record<string, string>
   >({});
   const [flaggedFields, setFlaggedFields] = useState<Set<string>>(new Set());
+  const perLabelReviewState = useRef<
+    Record<number, { reviewMode: "summary" | "reviewing" | "complete"; currentReviewIndex: number; manualOverrides: Record<string, string>; flaggedFields: Set<string> }>
+  >({});
   const replaceFileInputRef = useRef<HTMLInputElement>(null);
   const [replacingResultIndex, setReplacingResultIndex] = useState<
     number | null
@@ -725,15 +728,34 @@ export default function Home() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [step, isProcessing, fileList.length, results.length]);
 
-  /* Reset one-at-a-time review when switching labels in batch */
+  /* Save/restore per-label review state when switching labels */
+  const prevResultIndex = useRef(currentResultIndex);
   useEffect(() => {
-    setReviewMode("summary");
-    setCurrentReviewIndex(0);
-    setManualOverrides({});
-    setFlaggedFields(new Set());
-    setGovWarningExpanded(false);
-    setConfirmingReset(false);
-  }, [currentResultIndex]);
+    const prev = prevResultIndex.current;
+    if (prev !== currentResultIndex) {
+      perLabelReviewState.current[prev] = {
+        reviewMode,
+        currentReviewIndex,
+        manualOverrides,
+        flaggedFields,
+      };
+      const saved = perLabelReviewState.current[currentResultIndex];
+      if (saved) {
+        setReviewMode(saved.reviewMode);
+        setCurrentReviewIndex(saved.currentReviewIndex);
+        setManualOverrides(saved.manualOverrides);
+        setFlaggedFields(saved.flaggedFields);
+      } else {
+        setReviewMode("summary");
+        setCurrentReviewIndex(0);
+        setManualOverrides({});
+        setFlaggedFields(new Set());
+      }
+      setGovWarningExpanded(false);
+      setConfirmingReset(false);
+      prevResultIndex.current = currentResultIndex;
+    }
+  }, [currentResultIndex, reviewMode, currentReviewIndex, manualOverrides, flaggedFields]);
 
   /* Collapse gov warning when moving between fields */
   useEffect(() => {
@@ -1624,7 +1646,7 @@ export default function Home() {
                           const totalSec = totalMs / 1000;
                           const totalTimeStr = totalSec >= 60 ? `${Math.floor(totalSec / 60)}m ${Math.round(totalSec % 60)}s` : `${totalSec.toFixed(1)}s`;
                           const rows: string[] = [];
-                          rows.push("Verification Complete");
+                          rows.push("Verification Summary");
                           rows.push(["Metric", "Value"].join(","));
                           rows.push(["Total labels", String(results.length)].join(","));
                           rows.push(["Total time", totalTimeStr].join(","));
@@ -1633,27 +1655,40 @@ export default function Home() {
                           rows.push(["Need review", String(reviewCount)].join(","));
                           rows.push(["Failed (OCR)", String(ocrFailedCount)].join(","));
                           rows.push("");
-                          rows.push(["File Name", "Brand name", "Class/Type", "Alcohol content", "Net contents", "Bottler/Producer", "Country of origin", "Government warning", "Alcohol content abbr", "Issues", "Duration (s)"].join(","));
-                          for (const r of results) {
+                          rows.push("Per-Label Detail");
+                          const fieldKeys = ["brandName", "classType", "alcoholContent", "netContents", "bottlerNameAddress", "countryOfOrigin", "governmentWarning", "alcoholContentFormat"];
+                          const fieldLabels: Record<string, string> = { brandName: "Brand name", classType: "Class/Type", alcoholContent: "Alcohol content", netContents: "Net contents", bottlerNameAddress: "Bottler/Producer", countryOfOrigin: "Country of origin", governmentWarning: "Government warning", alcoholContentFormat: "ABV abbreviation" };
+                          const header = ["File Name"];
+                          for (const fk of fieldKeys) {
+                            header.push(`${fieldLabels[fk]} Status`, `${fieldLabels[fk]} Expected`, `${fieldLabels[fk]} Found`);
+                          }
+                          header.push("Reviewer Decision", "Issues", "Duration (s)");
+                          rows.push(header.join(","));
+                          for (let ri = 0; ri < results.length; ri++) {
+                            const r = results[ri];
                             if (r.status !== "success") {
-                              rows.push([esc(r.fileName), "", "", "", "", "", "", "", "", "OCR Failed", ""].join(","));
+                              const cells = [esc(r.fileName)];
+                              for (let fi = 0; fi < fieldKeys.length; fi++) { cells.push("", "", ""); }
+                              cells.push("", "OCR Failed", "");
+                              rows.push(cells.join(","));
                               continue;
                             }
-                            const fieldStatus = (f: string) => r.checks.find((c) => c.field === f)?.status ?? "—";
+                            const saved = perLabelReviewState.current[ri];
+                            const cells = [esc(r.fileName)];
+                            for (const fk of fieldKeys) {
+                              const check = r.checks.find((c) => c.field === fk);
+                              cells.push(
+                                check?.status ?? "—",
+                                esc(check?.expected ?? ""),
+                                esc(check?.actual ?? ""),
+                              );
+                            }
+                            const decision = saved?.reviewMode === "complete"
+                              ? (saved.flaggedFields.size > 0 ? "Flagged" : "Accepted")
+                              : "Not reviewed";
                             const issues = r.checks.filter((c) => c.status !== "match").length;
-                            rows.push([
-                              esc(r.fileName),
-                              fieldStatus("brandName"),
-                              fieldStatus("classType"),
-                              fieldStatus("alcoholContent"),
-                              fieldStatus("netContents"),
-                              fieldStatus("bottlerNameAddress"),
-                              fieldStatus("countryOfOrigin"),
-                              fieldStatus("governmentWarning"),
-                              fieldStatus("alcoholContentFormat"),
-                              String(issues),
-                              (r.durationMs / 1000).toFixed(1),
-                            ].join(","));
+                            cells.push(decision, String(issues), (r.durationMs / 1000).toFixed(1));
+                            rows.push(cells.join(","));
                           }
                           const blob = new Blob([rows.join("\n")], { type: "text/csv" });
                           const a = document.createElement("a");
@@ -1820,20 +1855,56 @@ export default function Home() {
                     <button
                       type="button"
                       onClick={() => {
-                        setPendingReplaceResultIndex(safeIndex);
-                        replaceFileInputRef.current?.click();
+                        if (fileList[safeIndex]) {
+                          void runSingleImageVerification(safeIndex);
+                        }
                       }}
                       disabled={replacingResultIndex !== null}
-                      className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[16px] bg-[#007AFF] px-4 py-3 text-[16px] font-semibold text-white depth-2 transition-opacity hover:opacity-95 disabled:opacity-60"
+                      className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[16px] px-4 py-3 text-[16px] font-semibold text-white depth-2 transition-opacity hover:opacity-95 disabled:opacity-60"
+                      style={{
+                        background: "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
+                        boxShadow: "0 4px 12px rgba(0, 122, 255, 0.25)",
+                      }}
                     >
                       {replacingResultIndex === safeIndex ? (
                         <>
                           <span className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                          Processing new image...
+                          Retrying...
                         </>
                       ) : (
-                        "Upload a clearer photo"
+                        "Try again"
                       )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPendingReplaceResultIndex(safeIndex);
+                        replaceFileInputRef.current?.click();
+                      }}
+                      disabled={replacingResultIndex !== null}
+                      className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[16px] border-2 border-[#E5E5EA] bg-white px-4 py-3 text-[16px] font-semibold text-[#1C1C1E] transition-all duration-200 active:scale-[0.98] hover:scale-[1.02] disabled:opacity-60"
+                    >
+                      Upload a clearer photo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setResults((prev) => {
+                          const next = [...prev];
+                          const fieldKeys: FieldCheck["field"][] = ["brandName", "classType", "alcoholContent", "netContents", "bottlerNameAddress", "countryOfOrigin", "governmentWarning"];
+                          next[safeIndex] = {
+                            status: "success",
+                            fileName: prev[safeIndex].fileName,
+                            checks: fieldKeys.map((field) => ({ field, status: "missing" as const, expected: "", actual: "" })),
+                            rawOcrText: "",
+                            durationMs: 0,
+                          };
+                          return next;
+                        });
+                      }}
+                      className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[16px] border-2 border-[#E5E5EA] bg-white px-4 py-3 text-[16px] font-semibold text-[#1C1C1E] transition-all duration-200 active:scale-[0.98] hover:scale-[1.02]"
+                    >
+                      Enter fields manually
                     </button>
                     <button
                       type="button"
