@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { ApplicationLabelData } from "@/lib/labelComparison";
+import { DEMO_PRESETS } from "@/data/presets";
 
 export interface Step2AppDataProps {
   applicationData: ApplicationLabelData;
@@ -87,6 +88,34 @@ export function Step2AppData({
           >
             Application record
           </p>
+
+          <div className="step2-field-in flex flex-wrap items-center gap-3">
+            <label
+              htmlFor="preset-select"
+              className="text-[14px] font-medium text-[#8E8E93]"
+            >
+              Load test preset:
+            </label>
+            <select
+              id="preset-select"
+              value=""
+              onChange={(e) => {
+                const id = e.target.value;
+                if (!id) return;
+                const preset = DEMO_PRESETS.find((p) => p.id === id);
+                if (preset) setApplicationData({ ...preset.applicationData });
+                e.target.value = "";
+              }}
+              className="rounded-[12px] border border-[#E5E5EA] bg-white px-4 py-2.5 text-[15px] text-[#1C1C1E] focus:outline-none focus:ring-2 focus:ring-[#007AFF]"
+            >
+              <option value="">Choose…</option>
+              {DEMO_PRESETS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <div className="step2-field-in" style={{ animationDelay: "0ms" }}>
             <label
