@@ -163,7 +163,7 @@ select:focus-visible {
     #D1D5DB 100%
   );
   background-size: 300% 100%;
-  animation: skeleton-shimmer 2s ease-in-out infinite;
+  animation: skeleton-shimmer 4s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -293,7 +293,7 @@ select:focus-visible {
 }
 
 .upload-zone-pulse {
-  animation: upload-zone-pulse 2s ease-in-out infinite;
+  animation: none;
 }
 
 /* Step 2 – Apple ID form */

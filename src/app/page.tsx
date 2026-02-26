@@ -497,52 +497,36 @@ export default function Home() {
 
       try {
         const newResults: VerificationResult[] = [];
-        const BATCH_SIZE = 3;
 
-        for (let batchStart = 0; batchStart < files.length; batchStart += BATCH_SIZE) {
-          const batchEnd = Math.min(batchStart + BATCH_SIZE, files.length);
-
-          const batchItems = files.slice(batchStart, batchEnd).map((file, i) => ({
-            file,
-            index: batchStart + i,
-            appData:
-              applications[batchStart + i] ??
-              applications[applications.length - 1],
-          }));
-
-          const batchResults = await Promise.all(
-            batchItems.map(async ({ file, index, appData }) => {
-              setProcessingCurrent(index);
-              const start = performance.now();
-              try {
-                const { text: ocrText, extracted: extractedFromApi } =
-                  await ocrImage(file);
-                if (process.env.NODE_ENV === "development") {
-                  console.log("RAW OCR TEXT:", ocrText);
-                }
-                const extracted =
-                  extractedFromApi ?? extractFromOcrText(ocrText);
-                const checks = compareLabelData(appData, extracted);
-                const durationMs = performance.now() - start;
-                return {
-                  status: "success" as const,
-                  fileName: file.name,
-                  checks,
-                  rawOcrText: ocrText,
-                  durationMs,
-                };
-              } catch {
-                return {
-                  status: "ocr_failed" as const,
-                  fileName: file.name,
-                  fileIndex: index,
-                };
-              }
-            }),
-          );
-
-          newResults.push(...batchResults);
-          setProcessingCurrent(batchEnd);
+        for (let index = 0; index < files.length; index++) {
+          const file = files[index];
+          const appData = applications[index] ?? applications[applications.length - 1];
+          setProcessingCurrent(index + 1);
+          const start = performance.now();
+          try {
+            const { text: ocrText, extracted: extractedFromApi } =
+              await ocrImage(file);
+            if (process.env.NODE_ENV === "development") {
+              console.log("RAW OCR TEXT:", ocrText);
+            }
+            const extracted =
+              extractedFromApi ?? extractFromOcrText(ocrText);
+            const checks = compareLabelData(appData, extracted);
+            const durationMs = performance.now() - start;
+            newResults.push({
+              status: "success" as const,
+              fileName: file.name,
+              checks,
+              rawOcrText: ocrText,
+              durationMs,
+            });
+          } catch {
+            newResults.push({
+              status: "ocr_failed" as const,
+              fileName: file.name,
+              fileIndex: index,
+            });
+          }
           setResults([...newResults]);
         }
         setProgressMessage(null);
@@ -1578,9 +1562,19 @@ export default function Home() {
                     <div className="rounded-[20px] bg-white p-5 depth-1">
                       <p className="text-[17px] font-semibold text-[#1C1C1E]">Verification Complete</p>
                       <p className="mt-1 text-[13px] text-[#8E8E93]">
-                        {results.length} labels processed in {totalTimeStr} &middot; avg {(avgMs / 1000).toFixed(1)}s per label
+                        {results.length} label{results.length !== 1 ? "s" : ""} processed
                       </p>
-                      <div className="mt-4 grid grid-cols-3 gap-3">
+                      <div className="mt-4 grid grid-cols-2 gap-3">
+                        <div className="rounded-[12px] bg-[#F2F2F7] px-3 py-2.5 text-center">
+                          <p className="text-[22px] font-bold text-[#1C1C1E]">{totalTimeStr}</p>
+                          <p className="text-[12px] text-[#3C3C43]">Total time</p>
+                        </div>
+                        <div className="rounded-[12px] bg-[#F2F2F7] px-3 py-2.5 text-center">
+                          <p className="text-[22px] font-bold text-[#1C1C1E]">{(avgMs / 1000).toFixed(1)}s</p>
+                          <p className="text-[12px] text-[#3C3C43]">Avg per label</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 grid grid-cols-3 gap-3">
                         <div className="rounded-[12px] bg-[#F2F2F7] px-3 py-2.5 text-center">
                           <p className="text-[22px] font-bold text-[#248A3D]">{passedCount}</p>
                           <p className="text-[12px] text-[#3C3C43]">Passed</p>
@@ -1819,14 +1813,6 @@ export default function Home() {
                   if (reviewMode === "summary") {
                     return (
                       <section className="mx-auto flex max-w-[600px] flex-col gap-8">
-                        {results.length > 1 && (
-                          <p
-                            className="text-[15px] font-normal text-[#8E8E93]"
-                            style={{ letterSpacing: "-0.01em" }}
-                          >
-                            Label {safeIndex + 1} of {results.length}
-                          </p>
-                        )}
                         <div
                           className="animate-fade-scale-in flex min-h-[140px] flex-col justify-center rounded-[24px] p-8"
                           style={{
@@ -1992,18 +1978,6 @@ export default function Home() {
                       FIELD_LABEL_MAP[currentCheck.field] ?? currentCheck.field;
                     return (
                       <section className="mx-auto flex max-w-[600px] flex-col gap-8">
-                        {results.length > 1 && (
-                          <p className="text-[15px] font-normal text-[#8E8E93]">
-                            Label {safeIndex + 1} of {results.length}
-                          </p>
-                        )}
-                        <p
-                          className="text-[15px] font-normal text-[#8E8E93]"
-                          style={{ letterSpacing: "-0.01em" }}
-                        >
-                          Field {currentReviewIndex + 1} of{" "}
-                          {totalReviewCount} that need review
-                        </p>
                         <div
                           className="rounded-[24px] bg-white p-8"
                           style={{
@@ -2232,11 +2206,6 @@ export default function Home() {
                     const hasFlags = flaggedCount > 0;
                     return (
                       <section className="mx-auto flex max-w-[600px] flex-col gap-8">
-                        {results.length > 1 && (
-                          <p className="text-[15px] font-normal text-[#8E8E93]">
-                            Label {safeIndex + 1} of {results.length}
-                          </p>
-                        )}
                         <div
                           className="rounded-[24px] p-8"
                           style={{
@@ -2325,6 +2294,31 @@ export default function Home() {
                             </button>
                           </div>
                         </div>
+                        {results.length > 1 && (
+                          <div className="flex items-center justify-center gap-4 pt-4">
+                            <button
+                              type="button"
+                              aria-label="Previous label"
+                              disabled={safeIndex === 0}
+                              onClick={() => setCurrentResultIndex((i) => Math.max(0, i - 1))}
+                              className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-[12px] border border-[#E5E5EA] bg-white text-[#1C1C1E] transition-transform duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              ‹
+                            </button>
+                            <span className="min-w-[80px] text-center text-[15px] text-[#8E8E93]">
+                              {safeIndex + 1} / {results.length}
+                            </span>
+                            <button
+                              type="button"
+                              aria-label="Next label"
+                              disabled={safeIndex >= results.length - 1}
+                              onClick={() => setCurrentResultIndex((i) => Math.min(results.length - 1, i + 1))}
+                              className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-[12px] border border-[#E5E5EA] bg-white text-[#1C1C1E] transition-transform duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              ›
+                            </button>
+                          </div>
+                        )}
                       </section>
                     );
                   }
