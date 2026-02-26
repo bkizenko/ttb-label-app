@@ -4,12 +4,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   STANDARD_GOVERNMENT_WARNING,
-  compareLabelData,
   type ApplicationLabelData,
-  type ExtractedLabelData,
   type FieldCheck,
 } from "@/lib/labelComparison";
-import { extractFromOcrText, ocrImage } from "@/lib/ocrClient";
+import { useVerification } from "@/hooks/useVerification";
 import {
   defaultApplicationData,
   type Mode,
@@ -98,10 +96,6 @@ export default function Home() {
   );
   const [batchJson, setBatchJson] = useState("");
   const [fileList, setFileList] = useState<File[]>([]);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [processingCurrent, setProcessingCurrent] = useState(0);
-  const [processingTotal, setProcessingTotal] = useState(0);
-  const [results, setResults] = useState<VerificationResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [progressMessage, setProgressMessage] = useState<string | null>(null);
   const [currentResultIndex, setCurrentResultIndex] = useState(0);
@@ -132,40 +126,39 @@ export default function Home() {
   const [govWarningExpanded, setGovWarningExpanded] = useState(false);
   const [batchTab, setBatchTab] = useState<"summary" | "detail">("detail");
   const [confirmingReset, setConfirmingReset] = useState(false);
-  const [processingPreviewUrl, setProcessingPreviewUrl] = useState<
-    string | null
-  >(null);
-  const processingThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [processingFieldLabel, setProcessingFieldLabel] = useState("");
-  const [batchStartTime, setBatchStartTime] = useState(0);
 
-  useEffect(() => {
-    if (isProcessing && fileList.length > 0) {
-      const idx = Math.min(processingCurrent, fileList.length - 1);
-      const url = URL.createObjectURL(fileList[idx]);
-      setProcessingPreviewUrl(url);
-      return () => {
-        URL.revokeObjectURL(url);
-        setProcessingPreviewUrl(null);
-      };
-    }
-    setProcessingPreviewUrl(null);
-  }, [isProcessing, fileList, processingCurrent]);
-
-  useEffect(() => {
-    if (!isProcessing) {
-      setProcessingFieldLabel("");
-      return;
-    }
-    const fields = ["Brand name", "Class/Type", "Alcohol content", "Net contents", "Bottler/Producer", "Country of origin", "Government warning"];
-    let i = 0;
-    setProcessingFieldLabel(fields[0]);
-    const cycle = setInterval(() => {
-      i = (i + 1) % fields.length;
-      setProcessingFieldLabel(fields[i]);
-    }, 800);
-    return () => clearInterval(cycle);
-  }, [isProcessing, processingCurrent]);
+  const {
+    results,
+    setResults,
+    isProcessing,
+    processingCurrent,
+    processingTotal,
+    processingPreviewUrl,
+    processingFieldLabel,
+    runVerification,
+    runSingleImageVerification,
+  } = useVerification({
+    fileList,
+    applicationData,
+    onRunStart: () => {
+      setReviewMode("summary");
+      setCurrentReviewIndex(0);
+      setManualOverrides({});
+      setFlaggedFields(new Set());
+      setCurrentResultIndex(0);
+      setError(null);
+      setCatastrophicError(null);
+      setProgressMessage("Reading label...");
+    },
+    onRunComplete: () => {
+      setProgressMessage(null);
+      setStep(3);
+    },
+    onCatastrophicError: setCatastrophicError,
+    onValidationError: setError,
+    onSingleImageStart: setReplacingResultIndex,
+    onSingleImageEnd: () => setReplacingResultIndex(null),
+  });
 
   const handleFilesSelected = (files: FileList | null) => {
     if (!files) return;
@@ -228,106 +221,6 @@ export default function Home() {
     }
   }, [batchJson]);
 
-  const runVerification = useCallback(
-    async (files: File[], applications: ApplicationLabelData[]) => {
-      if (!files.length) {
-        setError("Please add at least one label image.");
-        return;
-      }
-
-      if (!applications.length) {
-        setError("Please provide application data to compare against.");
-        return;
-      }
-
-      setIsProcessing(true);
-      setResults([]);
-      setError(null);
-      setCatastrophicError(null);
-      setReviewMode("summary");
-      setCurrentReviewIndex(0);
-      setManualOverrides({});
-      setFlaggedFields(new Set());
-      setCurrentResultIndex(0);
-      setProgressMessage("Reading label...");
-      setProcessingTotal(files.length);
-      setProcessingCurrent(0);
-      setBatchStartTime(performance.now());
-
-      try {
-        const newResults: VerificationResult[] = [];
-        const BATCH_SIZE = 3;
-
-        for (let batchStart = 0; batchStart < files.length; batchStart += BATCH_SIZE) {
-          const batchEnd = Math.min(batchStart + BATCH_SIZE, files.length);
-
-          const batchItems = files.slice(batchStart, batchEnd).map((file, i) => ({
-            file,
-            index: batchStart + i,
-            appData:
-              applications[batchStart + i] ??
-              applications[applications.length - 1],
-          }));
-
-          let batchCompleted = 0;
-          const batchResults = await Promise.all(
-            batchItems.map(async ({ file, index, appData }) => {
-              const start = performance.now();
-              try {
-                const timeoutMs = 30000;
-                const ocrPromise = ocrImage(file);
-                const timeoutPromise = new Promise<never>((_, reject) =>
-                  setTimeout(() => reject(new Error("OCR timeout")), timeoutMs),
-                );
-                const { text: ocrText, extracted: extractedFromApi } =
-                  await Promise.race([ocrPromise, timeoutPromise]);
-                if (process.env.NODE_ENV === "development") {
-                  console.log("RAW OCR TEXT:", ocrText);
-                }
-                const extracted =
-                  extractedFromApi ?? extractFromOcrText(ocrText);
-                const checks = compareLabelData(appData, extracted);
-                const durationMs = performance.now() - start;
-                batchCompleted++;
-                setProcessingCurrent(batchStart + batchCompleted);
-                return {
-                  status: "success" as const,
-                  fileName: file.name,
-                  checks,
-                  rawOcrText: ocrText,
-                  durationMs,
-                };
-              } catch {
-                batchCompleted++;
-                setProcessingCurrent(batchStart + batchCompleted);
-                return {
-                  status: "ocr_failed" as const,
-                  fileName: file.name,
-                  fileIndex: index,
-                };
-              }
-            }),
-          );
-
-          newResults.push(...batchResults);
-          setResults([...newResults]);
-        }
-        setProgressMessage(null);
-        setStep(3);
-      } catch (e) {
-        setCatastrophicError(
-          "OCR processing stopped unexpectedly. Your images are safe—try again or contact support.",
-        );
-      } finally {
-        setIsProcessing(false);
-        setProgressMessage(null);
-        setProcessingCurrent(0);
-        setProcessingTotal(0);
-      }
-    },
-    [],
-  );
-
   const normalizeApplicationDataForDomestic = useCallback(
     (app: ApplicationLabelData): ApplicationLabelData => {
       const co = (app.countryOfOrigin ?? "").trim();
@@ -356,48 +249,6 @@ export default function Home() {
   const handleRunWizard = () => {
     void runVerification(fileList, [normalizeApplicationDataForDomestic(applicationData)]);
   };
-
-  const runSingleImageVerification = useCallback(
-    async (resultIndex: number, fileOverride?: File) => {
-      const file = fileOverride ?? fileList[resultIndex];
-      if (!file) return;
-      setReplacingResultIndex(resultIndex);
-      try {
-        const start = performance.now();
-        const { text: ocrText, extracted: extractedFromApi } =
-          await ocrImage(file);
-        if (process.env.NODE_ENV === "development") {
-          console.log("RAW OCR TEXT:", ocrText);
-        }
-        const extracted =
-          extractedFromApi ?? extractFromOcrText(ocrText);
-        const checks = compareLabelData(applicationData, extracted);
-        const durationMs = performance.now() - start;
-        setResults((prev) => {
-          const next = [...prev];
-          next[resultIndex] = {
-            status: "success",
-            fileName: file.name,
-            checks,
-            rawOcrText: ocrText,
-            durationMs,
-          };
-          return next;
-        });
-      } catch {
-        setResults((prev) => {
-          const next = [...prev];
-          const existing = next[resultIndex];
-          if (existing?.status === "ocr_failed")
-            next[resultIndex] = { ...existing };
-          return next;
-        });
-      } finally {
-        setReplacingResultIndex(null);
-      }
-    },
-    [fileList, applicationData],
-  );
 
   const skipLabelAtResultIndex = useCallback((resultIndex: number) => {
     setResults((prev) => prev.filter((_, i) => i !== resultIndex));
@@ -433,8 +284,6 @@ export default function Home() {
     setCatastrophicError(null);
     setUploadFileTypeError(null);
     setProgressMessage(null);
-    setProcessingCurrent(0);
-    setProcessingTotal(0);
     setCurrentResultIndex(0);
     setReplacingResultIndex(null);
     setPendingReplaceResultIndex(null);
