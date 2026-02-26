@@ -4,7 +4,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CatastrophicErrorModal } from "@/components/CatastrophicErrorModal";
 import { LabelNav } from "@/components/LabelNav";
+import { OcrFailedCard } from "@/components/OcrFailedCard";
 import { ProcessingOverlay } from "@/components/ProcessingOverlay";
+import { ReviewCompleteCard } from "@/components/ReviewCompleteCard";
+import { ReviewSummaryCard } from "@/components/ReviewSummaryCard";
 import { Step1Upload } from "@/components/Step1Upload";
 import { Step2AppData } from "@/components/Step2AppData";
 import { ThumbnailCard } from "@/components/ThumbnailCard";
@@ -747,126 +750,53 @@ export default function Home() {
                 No results yet. Run a verification to see comparisons.
               </section>
             ) : activeIsFailed ? (
-              /* Scenario 1: OCR failed card */
-              <section
-                id={safeIndex === firstFailedIndex ? "first-failed-label" : undefined}
-                className="animate-error-card-in rounded-[20px] p-6 depth-1"
-                style={{
-                  background: "linear-gradient(180deg, #FFE5E5 0%, #FFF0F0 100%)",
-                }}
-                role="alert"
-                aria-live="assertive"
-              >
-                <div className="flex flex-col gap-5">
-                  <div className="flex items-start gap-4">
-                    <span
-                      className="animate-error-warning-pulse flex h-12 w-12 shrink-0 items-center justify-center text-[48px] leading-none text-[#FF3B30]"
-                      aria-hidden
-                    >
-                      ⚠
-                    </span>
-                    <div>
-                      <h2 className="text-[20px] font-semibold text-[#1C1C1E]">
-                        Couldn't read this label
-                      </h2>
-                      <p className="mt-2 text-[16px] text-[#8E8E93]">
-                        The image quality may be too low, or the text might be
-                        unclear.
-                      </p>
-                    </div>
-                  </div>
-                  {fileList[safeIndex] && (
-                    <div className="flex justify-center">
-                      <img
-                        src={URL.createObjectURL(fileList[safeIndex]!)}
-                        alt=""
-                        className="h-[120px] rounded-[16px] border border-[#E5E5EA] bg-white object-contain"
-                      />
-                    </div>
-                  )}
-                  <div className="flex flex-col gap-3">
-                    <input
-                      ref={replaceFileInputRef}
-                      type="file"
-                      accept="image/*"
-                      className="sr-only"
-                      aria-label="Upload a clearer photo"
-                      onChange={(e) => {
-                        const i = pendingReplaceResultIndex;
-                        setPendingReplaceResultIndex(null);
-                        const file = e.target.files?.[0];
-                        if (i != null && file) replaceFileAtResultIndex(i, file);
-                        e.target.value = "";
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (fileList[safeIndex]) {
-                          void runSingleImageVerification(safeIndex);
-                        }
-                      }}
-                      disabled={replacingResultIndex !== null}
-                      className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[16px] px-4 py-3 text-[16px] font-semibold text-white depth-2 transition-opacity hover:opacity-95 disabled:opacity-60"
-                      style={{
-                        background: "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
-                        boxShadow: "0 4px 12px rgba(0, 122, 255, 0.25)",
-                      }}
-                    >
-                      {replacingResultIndex === safeIndex ? (
-                        <>
-                          <span className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                          Retrying...
-                        </>
-                      ) : (
-                        "Try again"
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPendingReplaceResultIndex(safeIndex);
-                        replaceFileInputRef.current?.click();
-                      }}
-                      disabled={replacingResultIndex !== null}
-                      className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[16px] border-2 border-[#E5E5EA] bg-white px-4 py-3 text-[16px] font-semibold text-[#1C1C1E] transition-all duration-200 active:scale-[0.98] hover:scale-[1.02] disabled:opacity-60"
-                    >
-                      Upload a clearer photo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setResults((prev) => {
-                          const next = [...prev];
-                          const fieldKeys: FieldCheck["field"][] = ["brandName", "classType", "alcoholContent", "netContents", "bottlerNameAddress", "countryOfOrigin", "governmentWarning"];
-                          next[safeIndex] = {
-                            status: "success",
-                            fileName: prev[safeIndex].fileName,
-                            checks: fieldKeys.map((field) => ({ field, status: "missing" as const, expected: "", actual: "" })),
-                            rawOcrText: "",
-                            durationMs: 0,
-                          };
-                          return next;
-                        });
-                        setReviewMode("reviewing");
-                        setCurrentReviewIndex(0);
-                        setManualOverrides({});
-                        setFlaggedFields(new Set());
-                      }}
-                      className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[16px] border-2 border-[#E5E5EA] bg-white px-4 py-3 text-[16px] font-semibold text-[#1C1C1E] transition-all duration-200 active:scale-[0.98] hover:scale-[1.02]"
-                    >
-                      Enter fields manually
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => skipLabelAtResultIndex(safeIndex)}
-                      className="min-h-[44px] text-[16px] font-normal text-[#8E8E93] hover:text-[#1C1C1E]"
-                    >
-                      Skip this label
-                    </button>
-                  </div>
-                </div>
-              </section>
+              <>
+                <input
+                  ref={replaceFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  aria-label="Upload a clearer photo"
+                  onChange={(e) => {
+                    const i = pendingReplaceResultIndex;
+                    setPendingReplaceResultIndex(null);
+                    const file = e.target.files?.[0];
+                    if (i != null && file) replaceFileAtResultIndex(i, file);
+                    e.target.value = "";
+                  }}
+                />
+                <OcrFailedCard
+                  id={safeIndex === firstFailedIndex ? "first-failed-label" : undefined}
+                  previewFile={fileList[safeIndex] ?? null}
+                  isReplacing={replacingResultIndex !== null}
+                  onTryAgain={() => {
+                    if (fileList[safeIndex]) void runSingleImageVerification(safeIndex);
+                  }}
+                  onUploadClearer={() => {
+                    setPendingReplaceResultIndex(safeIndex);
+                    replaceFileInputRef.current?.click();
+                  }}
+                  onEnterManually={() => {
+                    setResults((prev) => {
+                      const next = [...prev];
+                      const fieldKeys: FieldCheck["field"][] = ["brandName", "classType", "alcoholContent", "netContents", "bottlerNameAddress", "countryOfOrigin", "governmentWarning"];
+                      next[safeIndex] = {
+                        status: "success",
+                        fileName: prev[safeIndex].fileName,
+                        checks: fieldKeys.map((field) => ({ field, status: "missing" as const, expected: "", actual: "" })),
+                        rawOcrText: "",
+                        durationMs: 0,
+                      };
+                      return next;
+                    });
+                    setReviewMode("reviewing");
+                    setCurrentReviewIndex(0);
+                    setManualOverrides({});
+                    setFlaggedFields(new Set());
+                  }}
+                  onSkip={() => skipLabelAtResultIndex(safeIndex)}
+                />
+              </>
             ) : (
               <>
                 {(() => {
@@ -899,146 +829,24 @@ export default function Home() {
                   /* ——— SUMMARY: one card + one CTA ——— */
                   if (reviewMode === "summary") {
                     return (
-                      <section className="mx-auto flex max-w-[600px] flex-col gap-8">
-                        <div
-                          className="animate-fade-scale-in flex min-h-[140px] flex-col justify-center rounded-[24px] p-8"
-                          style={{
-                            boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
-                            animationDuration: "0.6s",
-                            animationTimingFunction:
-                              "cubic-bezier(0.34, 1.56, 0.64, 1)",
-                            ...(anyIssue
-                              ? {
-                                  background:
-                                    "linear-gradient(135deg, #E3F2FD 0%, #F5F9FF 100%)",
-                                }
-                              : {
-                                  background:
-                                    "linear-gradient(135deg, #E8F5E9 0%, #F1F8F4 100%)",
-                                }),
-                          }}
-                        >
-                          <div className="flex items-start gap-4">
-                            <span
-                              className="flex h-12 w-12 shrink-0 items-center justify-center text-[48px] leading-none"
-                              style={{
-                                color: anyIssue ? "#007AFF" : "#30D158",
-                              }}
-                              aria-hidden
-                            >
-                              {anyIssue ? "⚠️" : "✓"}
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <h2
-                                className="text-[22px] font-semibold tracking-tight text-[#1C1C1E]"
-                                style={{ letterSpacing: "-0.01em" }}
-                              >
-                                {anyIssue
-                                  ? `${issueCount} field${issueCount !== 1 ? "s" : ""} need your review`
-                                  : "All fields verified"}
-                              </h2>
-                              <p className="mt-1 text-[16px] font-normal text-[#8E8E93]">
-                                {anyIssue
-                                  ? `${matchCount} field${matchCount !== 1 ? "s" : ""} matched automatically`
-                                  : "This label matches the application"}
-                              </p>
-                            </div>
-                          </div>
-                          {/* Per-field scorecard */}
-                          <div className="mt-6 flex flex-col gap-2">
-                            {activeResult.checks.map((check) => {
-                              const label = FIELD_LABEL_MAP[check.field] ?? check.field;
-                              const icon =
-                                check.status === "match"
-                                  ? "✓"
-                                  : check.status === "missing"
-                                  ? "✗"
-                                  : "⚠";
-                              const color =
-                                check.status === "match"
-                                  ? "#30D158"
-                                  : check.status === "missing"
-                                  ? "#FF3B30"
-                                  : "#FF9500";
-                              return (
-                                <div
-                                  key={check.field}
-                                  className="flex items-center gap-3 rounded-[12px] bg-white px-4 py-3"
-                                  style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}
-                                >
-                                  <span
-                                    className="text-[18px] font-bold leading-none"
-                                    style={{ color, minWidth: "20px" }}
-                                    aria-hidden
-                                  >
-                                    {icon}
-                                  </span>
-                                  <span className="text-[15px] font-medium text-[#1C1C1E]">
-                                    {label}
-                                  </span>
-                                  {check.status !== "match" && (
-                                    <span
-                                      className="ml-auto rounded-full px-2 py-0.5 text-[12px] font-semibold"
-                                      style={{
-                                        background: check.status === "missing" ? "#FFEBEB" : "#FFF4E5",
-                                        color: check.status === "missing" ? "#FF3B30" : "#FF9500",
-                                      }}
-                                    >
-                                      {check.status === "missing" ? "Missing" : "Review"}
-                                    </span>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-
-                          <div className="mt-6 flex flex-col gap-4">
-                            {anyIssue ? (
-                              <button
-                                type="button"
-                                onClick={() => setReviewMode("reviewing")}
-                                className="flex min-h-[56px] w-full items-center justify-center rounded-[24px] px-6 py-4 text-[17px] font-semibold text-white transition-transform duration-150 active:scale-[0.97]"
-                                style={{
-                                  background:
-                                    "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
-                                  boxShadow:
-                                    "0 4px 12px rgba(0, 122, 255, 0.25)",
-                                }}
-                              >
-                                Start Review
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={resetWizard}
-                                className="flex min-h-[56px] w-full items-center justify-center rounded-[24px] px-6 py-4 text-[17px] font-semibold text-white transition-transform duration-150 active:scale-[0.97]"
-                                style={{
-                                  background:
-                                    "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
-                                  boxShadow:
-                                    "0 4px 12px rgba(0, 122, 255, 0.25)",
-                                }}
-                              >
-                                Check Another Label
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        {results.length > 1 && (
-                          <LabelNav
-                            currentIndex={safeIndex}
-                            total={results.length}
-                            onPrev={() =>
-                              setCurrentResultIndex((i) => Math.max(0, i - 1))
-                            }
-                            onNext={() =>
-                              setCurrentResultIndex((i) =>
-                                Math.min(results.length - 1, i + 1),
-                              )
-                            }
-                          />
-                        )}
-                      </section>
+                      <ReviewSummaryCard
+                        anyIssue={anyIssue}
+                        issueCount={issueCount}
+                        matchCount={matchCount}
+                        checks={activeResult.checks}
+                        onStartReview={() => setReviewMode("reviewing")}
+                        onCheckAnother={resetWizard}
+                        currentIndex={safeIndex}
+                        totalLabels={results.length}
+                        onPrev={() =>
+                          setCurrentResultIndex((i) => Math.max(0, i - 1))
+                        }
+                        onNext={() =>
+                          setCurrentResultIndex((i) =>
+                            Math.min(results.length - 1, i + 1),
+                          )
+                        }
+                      />
                     );
                   }
 
@@ -1275,103 +1083,27 @@ export default function Home() {
                     const acceptedCount = totalReviewCount - flaggedCount;
                     const hasFlags = flaggedCount > 0;
                     return (
-                      <section className="mx-auto flex max-w-[600px] flex-col gap-8">
-                        <div
-                          className="rounded-[24px] p-8"
-                          style={{
-                            boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
-                            background: hasFlags
-                              ? "linear-gradient(135deg, #E3F2FD 0%, #F5F9FF 100%)"
-                              : "linear-gradient(135deg, #E8F5E9 0%, #F1F8F4 100%)",
-                          }}
-                        >
-                          <div className="flex items-center gap-4">
-                            <span
-                              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[20px] font-bold leading-none"
-                              style={{
-                                color: hasFlags ? "#D70015" : "#248A3D",
-                                background: hasFlags ? "#FFF0F0" : "#F0FFF4",
-                              }}
-                              aria-hidden
-                            >
-                              {hasFlags ? "!" : "✓"}
-                            </span>
-                            <h2 className="text-[22px] font-semibold tracking-tight text-[#1C1C1E]">
-                              {hasFlags ? "Label needs attention" : "Label verified"}
-                            </h2>
-                          </div>
-                          <div className="mt-5 flex flex-col gap-3">
-                            {flaggedCount > 0 && (
-                              <div className="flex items-center gap-3 rounded-[12px] border border-[#FF3B30]/25 bg-[#FFE5E5] px-4 py-2.5">
-                                <span className="text-[15px] font-semibold text-[#FF3B30]">{flaggedCount}</span>
-                                <span className="text-[15px] text-[#FF3B30]">field{flaggedCount !== 1 ? "s" : ""} flagged as not matching</span>
-                              </div>
-                            )}
-                            {acceptedCount > 0 && (
-                              <div className="flex items-center gap-3 rounded-[12px] border border-[#30D158]/25 bg-[#E8F5E9] px-4 py-2.5">
-                                <span className="text-[15px] font-semibold text-[#30D158]">{acceptedCount}</span>
-                                <span className="text-[15px] text-[#248A3D]">field{acceptedCount !== 1 ? "s" : ""} accepted by reviewer</span>
-                              </div>
-                            )}
-                            {matchCount > 0 && (
-                              <div className="flex items-center gap-3 rounded-[12px] border border-[#30D158]/25 bg-[#E8F5E9] px-4 py-2.5">
-                                <span className="text-[15px] font-semibold text-[#30D158]">{matchCount}</span>
-                                <span className="text-[15px] text-[#248A3D]">field{matchCount !== 1 ? "s" : ""} matched automatically</span>
-                              </div>
-                            )}
-                          </div>
-                          <p className="mt-5 text-[15px] font-normal text-[#8E8E93]">
-                            Processed in {durationSec} seconds
-                          </p>
-                          <div className="mt-8 flex flex-col gap-4">
-                            {results.length > 1 && safeIndex < results.length - 1 ? (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setCurrentResultIndex(safeIndex + 1);
-                                }}
-                                className="flex min-h-[56px] w-full items-center justify-center rounded-[24px] px-6 py-4 text-[17px] font-semibold text-white transition-transform duration-150 active:scale-[0.97]"
-                                style={{
-                                  background:
-                                    "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
-                                  boxShadow:
-                                    "0 4px 12px rgba(0, 122, 255, 0.25)",
-                                }}
-                              >
-                                Next Label
-                              </button>
-                            ) : safeIndex === results.length - 1 ? (
-                              <button
-                                type="button"
-                                onClick={() => setBatchTab("summary")}
-                                className="flex min-h-[56px] w-full items-center justify-center rounded-[24px] px-6 py-4 text-[17px] font-semibold text-white transition-transform duration-150 active:scale-[0.97]"
-                                style={{
-                                  background:
-                                    "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
-                                  boxShadow:
-                                    "0 4px 12px rgba(0, 122, 255, 0.25)",
-                                }}
-                              >
-                                View Batch Summary
-                              </button>
-                            ) : null}
-                          </div>
-                        </div>
-                        {results.length > 1 && (
-                          <LabelNav
-                            currentIndex={safeIndex}
-                            total={results.length}
-                            onPrev={() =>
-                              setCurrentResultIndex((i) => Math.max(0, i - 1))
-                            }
-                            onNext={() =>
-                              setCurrentResultIndex((i) =>
-                                Math.min(results.length - 1, i + 1),
-                              )
-                            }
-                          />
-                        )}
-                      </section>
+                      <ReviewCompleteCard
+                        hasFlags={hasFlags}
+                        flaggedCount={flaggedCount}
+                        acceptedCount={acceptedCount}
+                        matchCount={matchCount}
+                        durationSec={durationSec}
+                        onNextLabel={() =>
+                          setCurrentResultIndex(safeIndex + 1)
+                        }
+                        onViewBatchSummary={() => setBatchTab("summary")}
+                        currentIndex={safeIndex}
+                        totalLabels={results.length}
+                        onPrev={() =>
+                          setCurrentResultIndex((i) => Math.max(0, i - 1))
+                        }
+                        onNext={() =>
+                          setCurrentResultIndex((i) =>
+                            Math.min(results.length - 1, i + 1),
+                          )
+                        }
+                      />
                     );
                   }
 
