@@ -1,46 +1,75 @@
-## AI-Powered Alcohol Label Verification (Prototype)
+# TTB Label Verification (Prototype)
 
-Web app that helps TTB label compliance agents compare label images with application (COLA) data. Fast, obvious verification of routine fields with human agents in control.
+This app helps you compare alcohol label images with application (COLA) data. You upload a photo of a label, enter the expected information, and the app checks whether they match.
 
-### Tech stack
+---
 
-- **Next.js 16** (App Router), **React**, **TypeScript**
-- **Tailwind CSS** for UI
-- **Google Gemini 2.5 Flash** for OCR (server-side API route)
-- Deployable on **Vercel**, Azure, or any Node.js host
+## How to run it on your computer
 
-### Setup and run (local)
+You don’t need to be a developer; follow these steps in order.
 
-- **Prerequisites**: Node.js 18+, npm, and a Google AI Studio API key (`GEMINI_API_KEY`).
-- Copy `.env.example` to `.env.local` and set `GEMINI_API_KEY`.
-- Install and run:
+### 1. Install Node.js
+
+- Go to [https://nodejs.org](https://nodejs.org) and download the **LTS** version.
+- Run the installer and finish the setup.
+
+### 2. Get a Google AI (Gemini) API key
+
+- Go to [Google AI Studio](https://aistudio.google.com/apikey).
+- Sign in, then create an API key.
+- Copy the key and keep it somewhere safe (you’ll paste it in the next step).
+
+### 3. Open the project folder in Terminal (Mac) or Command Prompt (Windows)
+
+- On Mac: open **Terminal**, then type `cd` followed by a space, drag the project folder onto the Terminal window, and press Enter.
+- On Windows: open **Command Prompt**, type `cd` followed by a space, then the path to the project folder (e.g. `cd C:\Users\YourName\ttb-label-app`), and press Enter.
+
+### 4. Create your environment file
+
+- In the project folder, find the file **`.env.example`**.
+- Duplicate it and rename the copy to **`.env.local`**.
+- Open **`.env.local`** in a text editor and set your API key:
+
+  ```
+  GEMINI_API_KEY=paste-your-key-here
+  ```
+
+- Save the file.
+
+### 5. Install dependencies and start the app
+
+In the same Terminal/Command Prompt window, run:
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+When you see “Ready” or a local URL, open your browser and go to:
 
-### Deployed app
+**http://localhost:3000**
 
-**Live demo**: [https://ttb-label-app.vercel.app](https://ttb-label-app.vercel.app)
+You should see the TTB Label Verification app. Use **“Not sure where to start?”** to try a sample label with pre-filled data.
 
-### Approach and assumptions
+---
 
-- OCR runs server-side via `/api/ocr` (Gemini Vision). Comparison and UI run in the browser.
-- Text is normalized (case, spacing, punctuation) so obvious equivalents count as matches; government warning is checked word-for-word plus all-caps and bold for the header.
-- Single-label and batch modes; application data can be entered in a form or pasted as JSON. Optional presets and a “Not sure where to start?” demo flow load sample data and run a verification.
-- Prototype only: no persistence, no COLA integration; all data stays in memory.
+## Image formats
 
-### Known limitations
+- The app **accepts PNG, JPEG, and WebP**.
+- **HEIC** (common on iPhones) can be detected and may work, but **we recommend converting HEIC to PNG or JPEG first** for more reliable results. You can use a free converter such as [CloudConvert](https://cloudconvert.com/heic-to-png) or your device’s export option.
 
-- **Image formats**: Accepted formats are **PNG, JPEG, and WebP**. For HEIC or other formats, convert first (e.g. [cloudconvert.com/png-converter](https://cloudconvert.com/png-converter)).
-- **OCR accuracy**: Strong glare, skew, or very small text can reduce accuracy. Bold/formatting is inferred by the model; when it cannot verify bold/all-caps for the government warning, the app flags for manual review.
-- **Performance**: Images are resized (long edge ≤ 1500 px) before OCR to keep processing time down; see `PERFORMANCE.md` for notes.
+---
 
-### Trade-offs
+## Limitations
 
-- Server-side OCR requires an API key and outbound access; no offline use.
-- Heuristic comparison favors surfacing possible issues over strict auto-pass; some manual review is expected.
-- No audit log or export to COLA; suitable for prototype/demo only.
+- **Prototype only**: Nothing is saved to a server; data stays in your browser.
+- **OCR**: Very blurry, skewed, or tiny text may be misread. The app will flag uncertain cases for you to review.
+- **Government warning**: The app checks that the required warning text is present and that “GOVERNMENT WARNING:” is in all caps and bold when the OCR can determine it; otherwise it asks for manual review.
+
+---
+
+## Tech stack (for developers)
+
+- Next.js 16, React, TypeScript, Tailwind CSS
+- Google Gemini 2.5 Flash for OCR (server route)
+- Deployed at [https://ttb-label-app.vercel.app](https://ttb-label-app.vercel.app)

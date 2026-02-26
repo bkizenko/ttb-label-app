@@ -53,8 +53,8 @@ export function BatchSummaryTab({
     (sum, r) => sum + (r.durationMs ?? 0),
     0,
   );
-  const avgMs = sumOcrMs / Math.max(1, successResults.length);
   const totalMs = batchElapsedMs > 0 ? batchElapsedMs : sumOcrMs;
+  const avgMs = totalMs / Math.max(1, successResults.length);
   const totalSec = totalMs / 1000;
   const totalTimeStr =
     totalSec >= 60

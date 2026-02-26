@@ -1,8 +1,10 @@
 # Demo assets
 
-Place test label images here for presets and demo mode:
+Demo images live here and are used by the “Not sure where to start?” flow.
 
-- **daou-cabernet.png** — DAOU Cabernet Sauvignon (wine, domestic)
-- **absolut-citron.png** — Absolut Citron (vodka, import)
+- **wine images/** — DAOU Cabernet Sauvignon (HEIC/PNG)
+- **stone's throw/** — Stone's Throw IPA (PNG)
+- **vodka images/** — Absolut Citron (HEIC/JPG)
+- **old tom distillery test images/** — Old Tom bourbon (PNG)
 
-Use PNG or JPG of the actual bottle labels. These paths are referenced in `src/data/presets.ts`.
+Paths are set in `src/data/presets.ts`.

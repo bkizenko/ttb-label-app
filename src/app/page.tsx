@@ -27,7 +27,8 @@ import {
   type Mode,
   type VerificationResult,
 } from "@/lib/types";
-import { DEMO_PRESETS } from "@/data/presets";
+import { DEMO_PRESETS, getPresetById } from "@/data/presets";
+import { DemoPickerScreen } from "@/components/DemoPickerScreen";
 
 export default function Home() {
   const [mode, setMode] = useState<Mode>("single");
@@ -47,7 +48,10 @@ export default function Home() {
     null,
   );
   const replaceFileInputRef = useRef<HTMLInputElement>(null);
-  const runDemoOnStep2Ref = useRef(false);
+  const [demoPickerOpen, setDemoPickerOpen] = useState(false);
+  const [selectedDemoPresetId, setSelectedDemoPresetId] = useState<string | null>(
+    DEMO_PRESETS[0]?.id ?? null,
+  );
 
   const {
     reviewMode,
@@ -200,23 +204,32 @@ export default function Home() {
     void runVerification(fileList, [normalizeApplicationDataForDomestic(applicationData)]);
   };
 
-  const handleStartDemo = useCallback(async () => {
-    const preset = DEMO_PRESETS[0];
+  const demoImageUrl = useCallback((imagePath: string) => {
+    const encoded = imagePath
+      .split("/")
+      .map((seg) => encodeURIComponent(seg))
+      .join("/");
+    return `/demo/${encoded}`;
+  }, []);
+
+  const handleLoadDemoPreset = useCallback(async () => {
+    const preset = selectedDemoPresetId ? getPresetById(selectedDemoPresetId) : null;
     if (!preset) return;
     try {
-      const res = await fetch(`/demo/${preset.imagePath}`);
+      const url = demoImageUrl(preset.imagePath);
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Demo image not found");
       const blob = await res.blob();
-      const file = new File([blob], preset.imagePath, { type: blob.type || "image/png" });
+      const fileName = preset.imagePath.split("/").pop() ?? "demo.png";
+      const file = new File([blob], fileName, { type: blob.type || "image/png" });
       setFileList([file]);
       setApplicationData({ ...preset.applicationData });
       setError(null);
-      runDemoOnStep2Ref.current = true;
-      setStep(2);
+      setDemoPickerOpen(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load demo. Add images to public/demo/.");
+      setError(e instanceof Error ? e.message : "Could not load demo image.");
     }
-  }, []);
+  }, [selectedDemoPresetId, demoImageUrl]);
 
   const skipLabelAtResultIndex = useCallback((resultIndex: number) => {
     setResults((prev) => prev.filter((_, i) => i !== resultIndex));
@@ -273,14 +286,6 @@ export default function Home() {
     onNextLabel: () =>
       setCurrentResultIndex((i) => Math.min(results.length - 1, i + 1)),
   });
-
-  /* Auto-run verification when demo mode just loaded Step 2 */
-  useEffect(() => {
-    if (step === 2 && runDemoOnStep2Ref.current) {
-      runDemoOnStep2Ref.current = false;
-      handleRunWizard();
-    }
-  }, [step, handleRunWizard]);
 
   /* Collapse gov warning when moving between fields */
   useEffect(() => {
@@ -347,16 +352,34 @@ export default function Home() {
             </div>
           </header>
 
-          <Step1Upload
-            error={error}
-            uploadFileTypeError={uploadFileTypeError}
-            fileList={fileList}
-            onFilesSelected={handleFilesSelected}
-            onRemoveFile={removeSelectedFile}
-            onClearAll={clearAllFiles}
-            onNext={() => setStep(2)}
-            onStartDemo={handleStartDemo}
-          />
+          {demoPickerOpen ? (
+            <DemoPickerScreen
+              presets={DEMO_PRESETS}
+              selectedId={selectedDemoPresetId}
+              onSelect={setSelectedDemoPresetId}
+              onLoadDemo={handleLoadDemoPreset}
+              onBack={() => setDemoPickerOpen(false)}
+            />
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setDemoPickerOpen(true)}
+                className="w-full min-h-[48px] rounded-[16px] border-2 border-[#E5E5EA] bg-white px-6 py-3 text-[15px] font-semibold text-[#1C1C1E] transition-all duration-200 hover:border-[#007AFF] hover:bg-[#F0F7FF] hover:text-[#007AFF] active:scale-[0.98]"
+              >
+                Not sure where to start?
+              </button>
+              <Step1Upload
+                error={error}
+                uploadFileTypeError={uploadFileTypeError}
+                fileList={fileList}
+                onFilesSelected={handleFilesSelected}
+                onRemoveFile={removeSelectedFile}
+                onClearAll={clearAllFiles}
+                onNext={() => setStep(2)}
+              />
+            </>
+          )}
         </div>
       </div>
     </>

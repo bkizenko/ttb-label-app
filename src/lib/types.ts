@@ -21,11 +21,11 @@ export type VerificationResult =
 export type Mode = "single" | "batch";
 
 export const defaultApplicationData: ApplicationLabelData = {
-  brandName: "STONE'S THROW",
-  classType: "India Pale Ale",
-  alcoholContent: "6.5% Alc./Vol.",
-  netContents: "12 FL OZ",
-  bottlerNameAddress: "Stone's Throw Brewing Co, Portland, OR",
-  countryOfOrigin: "USA",
+  brandName: "",
+  classType: "",
+  alcoholContent: "",
+  netContents: "",
+  bottlerNameAddress: "",
+  countryOfOrigin: "",
   governmentWarning: STANDARD_GOVERNMENT_WARNING,
 };

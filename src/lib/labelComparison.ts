@@ -136,6 +136,19 @@ function pushFuzzyCheck(
   actual: string,
   matchThreshold: number,
 ): void {
+  const normExp = normalizeForComparison(expected);
+  const normAct = normalizeForComparison(actual);
+  if (normExp && normAct && (normAct.includes(normExp) || normExp.includes(normAct))) {
+    checks.push({
+      field,
+      status: "match",
+      expected,
+      actual,
+      notes: "Label text contains the expected value.",
+    });
+    return;
+  }
+
   const similarity = similarityScore(expected, actual);
 
   if (similarity === 100) {

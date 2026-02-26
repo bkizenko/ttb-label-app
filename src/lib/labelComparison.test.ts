@@ -350,6 +350,24 @@ describe("compareLabelData", () => {
     );
   });
 
+  it("bottler: label contains expected (e.g. Brewed by X vs X) → match", () => {
+    const app = {
+      ...baseApplication,
+      bottlerNameAddress: "Stone's Throw Brewing Co, Portland, OR",
+    };
+    const extracted: ExtractedLabelData = {
+      ...baseApplication,
+      governmentWarningText: STANDARD_GOVERNMENT_WARNING,
+      governmentWarningHeaderIsAllCaps: true,
+      governmentWarningHeaderIsBold: true,
+      bottlerNameAddress: "Brewed by Stone's Throw Brewing Co, Portland, OR",
+    };
+    const checks = compareLabelData(app, extracted);
+    const bottlerCheck = checks.find((c) => c.field === "bottlerNameAddress");
+    expect(bottlerCheck?.status).toBe("match");
+    expect(bottlerCheck?.notes).toContain("contains the expected");
+  });
+
   it("compares country of origin with high threshold", () => {
     const extracted: ExtractedLabelData = {
       ...baseApplication,
