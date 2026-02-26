@@ -98,6 +98,18 @@ const normalizeWhitespace = (value: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
+/** Domestic/US variants; per TTB, country of origin not required on label for domestic products. */
+function isDomesticCountry(value: string): boolean {
+  const v = value.trim().toUpperCase().replace(/[.\s]/g, "");
+  return (
+    v === "USA" ||
+    v === "US" ||
+    v === "UNITEDSTATES" ||
+    v === "AMERICA" ||
+    v === "UNITEDSTATESOFAMERICA"
+  );
+}
+
 function isSubstringMatch(
   expected: string,
   actual: string,
@@ -314,7 +326,7 @@ export const compareLabelData = (
     }
   }
 
-  // Country of origin (imports): fuzzy — skip if form field is blank
+  // Country of origin (imports): fuzzy — skip if form field is blank. Domestic (US) not required on label.
   if (application.countryOfOrigin?.trim()) {
     const expectedRaw = application.countryOfOrigin;
     const actualRaw = extracted.countryOfOrigin;
@@ -323,12 +335,21 @@ export const compareLabelData = (
       typeof actualRaw === "string" ? normalizeWhitespace(actualRaw) : "";
 
     if (!actualRaw || actual === "") {
-      checks.push({
-        field: "countryOfOrigin",
-        status: "missing",
-        expected: expectedRaw,
-        notes: "Not clearly found on label",
-      });
+      if (isDomesticCountry(expectedRaw)) {
+        checks.push({
+          field: "countryOfOrigin",
+          status: "match",
+          expected: expectedRaw,
+          notes: "Domestic products need not state country of origin on label",
+        });
+      } else {
+        checks.push({
+          field: "countryOfOrigin",
+          status: "missing",
+          expected: expectedRaw,
+          notes: "Not clearly found on label",
+        });
+      }
     } else {
       pushFuzzyCheck(checks, "countryOfOrigin", expected, actual, 90);
     }

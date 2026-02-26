@@ -7,7 +7,7 @@ import { LabelNav } from "@/components/LabelNav";
 import { OcrFailedCard } from "@/components/OcrFailedCard";
 import { ProcessingOverlay } from "@/components/ProcessingOverlay";
 import { BatchSummaryTab } from "@/components/BatchSummaryTab";
-import { ReviewCompleteCard } from "@/components/ReviewCompleteCard";
+import { ReviewFieldCard } from "@/components/ReviewFieldCard";
 import { ReviewSummaryCard } from "@/components/ReviewSummaryCard";
 import { Step3Results } from "@/components/Step3Results";
 import { Step1Upload } from "@/components/Step1Upload";
@@ -19,6 +19,7 @@ import {
   type ApplicationLabelData,
   type FieldCheck,
 } from "@/lib/labelComparison";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useReviewState } from "@/hooks/useReviewState";
 import { useVerification } from "@/hooks/useVerification";
 import {
@@ -238,46 +239,19 @@ export default function Home() {
     setFlaggedFields(new Set());
   };
 
-  /* Keyboard shortcuts (enhance only; every action has a visible button) */
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      const isTextarea = target.tagName === "TEXTAREA";
-      const isInput = target.tagName === "INPUT";
-
-      if (e.key === "Escape") {
-        if (step === 2) {
-          setStep(1);
-          e.preventDefault();
-        } else if (step === 3 && !isProcessing) {
-          setStep(2);
-          e.preventDefault();
-        }
-        return;
-      }
-
-      if (step === 2 && e.key === "Enter" && !isTextarea) {
-        const form = target.closest("form");
-        if (form && !isProcessing && fileList.length > 0) {
-          handleRunWizard();
-          e.preventDefault();
-        }
-        return;
-      }
-
-      if (step === 3 && results.length > 1) {
-        if (e.key === "ArrowLeft") {
-          setCurrentResultIndex((i) => Math.max(0, i - 1));
-          e.preventDefault();
-        } else if (e.key === "ArrowRight") {
-          setCurrentResultIndex((i) => Math.min(results.length - 1, i + 1));
-          e.preventDefault();
-        }
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [step, isProcessing, fileList.length, results.length]);
+  useKeyboardShortcuts({
+    step,
+    isProcessing,
+    fileListLength: fileList.length,
+    resultsLength: results.length,
+    onStep2Back: () => setStep(1),
+    onStep3Back: () => setStep(2),
+    onRunWizard: handleRunWizard,
+    onPrevLabel: () =>
+      setCurrentResultIndex((i) => Math.max(0, i - 1)),
+    onNextLabel: () =>
+      setCurrentResultIndex((i) => Math.min(results.length - 1, i + 1)),
+  });
 
   /* Collapse gov warning when moving between fields */
   useEffect(() => {
@@ -534,16 +508,6 @@ export default function Home() {
             ) : (
               <>
                 {(() => {
-                  const FIELD_LABEL_MAP: Record<string, string> = {
-                    brandName: "Brand name",
-                    classType: "Class/Type",
-                    alcoholContent: "Alcohol content",
-                    netContents: "Net contents",
-                    bottlerNameAddress: "Bottler/Producer name & address",
-                    countryOfOrigin: "Country of origin",
-                    governmentWarning: "Government warning",
-                    alcoholContentFormat: "Alcohol content abbreviation",
-                  };
                   const fieldsNeedingReview = activeResult.checks.filter(
                     (c) =>
                       c.status === "mismatch" || c.status === "missing",
@@ -586,258 +550,64 @@ export default function Home() {
 
                   /* ——— REVIEW: one field at a time ——— */
                   if (reviewMode === "reviewing" && currentCheck) {
-                    const fieldLabel =
-                      FIELD_LABEL_MAP[currentCheck.field] ?? currentCheck.field;
+                    const goNext = () => {
+                      if (isLastField) {
+                        setReviewMode("summary");
+                        if (safeIndex + 1 < results.length) {
+                          setCurrentResultIndex(safeIndex + 1);
+                        } else {
+                          setBatchTab("summary");
+                        }
+                      } else {
+                        setCurrentReviewIndex((i) => i + 1);
+                      }
+                    };
                     return (
-                      <section className="mx-auto flex max-w-[600px] flex-col gap-8">
-                        <div
-                          className="rounded-[24px] bg-white p-8"
-                          style={{
-                            boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
+                      <>
+                        <ReviewFieldCard
+                          check={currentCheck}
+                          previewFile={fileList[safeIndex] ?? null}
+                          isLastField={isLastField}
+                          govWarningExpanded={govWarningExpanded}
+                          onToggleGovWarning={() =>
+                            setGovWarningExpanded((v) => !v)
+                          }
+                          manualOverrideValue={
+                            manualOverrides[currentCheck.field] ?? ""
+                          }
+                          onManualOverrideChange={(value) =>
+                            setManualOverrides((prev) => ({
+                              ...prev,
+                              [currentCheck.field]: value,
+                            }))
+                          }
+                          standardGovernmentWarning={
+                            STANDARD_GOVERNMENT_WARNING
+                          }
+                          onAcceptMatch={goNext}
+                          onFlag={() => {
+                            setFlaggedFields((prev) =>
+                              new Set(prev).add(currentCheck.field),
+                            );
+                            goNext();
                           }}
-                        >
-                          {fileList[safeIndex] ? (
-                            <img
-                              src={URL.createObjectURL(fileList[safeIndex]!)}
-                              alt=""
-                              className="mb-6 w-full rounded-[16px] bg-[#F5F5F7] object-contain"
-                              style={{ maxHeight: "400px" }}
-                            />
-                          ) : (
-                            <div
-                              className="mb-6 w-full rounded-[16px] bg-[#F5F5F7]"
-                              style={{ height: "200px" }}
-                            />
-                          )}
-
-                          {currentCheck.field === "governmentWarning" && currentCheck.status === "missing" ? (
-                            <>
-                              <div
-                                role="alert"
-                                className="rounded-[16px] p-6"
-                                style={{
-                                  background: "#FFEBEB",
-                                  borderLeft: "6px solid #FF3B30",
-                                }}
-                              >
-                                <p className="text-[28px]" aria-hidden>⚠️</p>
-                                <h3 className="mt-2 text-[22px] font-bold text-[#D70015]" style={{ letterSpacing: "-0.01em" }}>
-                                  CRITICAL: Government Warning Required
-                                </h3>
-                                <p className="mt-3 text-[17px] leading-relaxed text-[#3C3C43]">
-                                  No government health warning was detected on this label. Federal law (27 CFR § 16.21) requires all alcohol labels to display:
-                                </p>
-                                <pre
-                                  className="mt-4 overflow-x-auto rounded-[12px] border-2 border-[#FF3B30] bg-white p-4 text-[14px] leading-relaxed text-black"
-                                  style={{ fontFamily: "'SF Mono', 'Monaco', 'Courier New', monospace", whiteSpace: "pre-wrap" }}
-                                >
-                                  {STANDARD_GOVERNMENT_WARNING}
-                                </pre>
-                                <p className="mt-3 text-[15px] italic text-[#3C3C43]">
-                                  The header must appear as "GOVERNMENT WARNING:" in all caps and bold.
-                                </p>
-                              </div>
-                              <div className="mt-6 flex flex-col gap-4">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (isLastField) {
-                                      setReviewMode("complete");
-                                    } else {
-                                      setCurrentReviewIndex((i) => i + 1);
-                                    }
-                                  }}
-                                  className="flex min-h-[56px] w-full items-center justify-center rounded-[24px] bg-[#FF3B30] px-6 py-4 text-[17px] font-semibold text-white transition-transform duration-150 active:scale-[0.97]"
-                                >
-                                  Acknowledge &amp; Continue
-                                </button>
-                              </div>
-                            </>
-                          ) : currentCheck.status === "mismatch" ? (
-                            <>
-                              <p
-                                className="text-[22px] font-semibold text-[#1C1C1E]"
-                                style={{ letterSpacing: "-0.01em" }}
-                              >
-                                ⚠️ {fieldLabel}
-                              </p>
-                              <p className="mt-2 text-[12px] font-medium uppercase tracking-wide text-[#8E8E93]">
-                                Expected
-                              </p>
-                              <p className="mt-1 text-[17px] font-normal text-[#1C1C1E]">
-                                {currentCheck.field === "governmentWarning" && !govWarningExpanded && (currentCheck.expected ?? "").length > 80
-                                  ? (currentCheck.expected ?? "").slice(0, 80) + "…"
-                                  : currentCheck.expected ?? "—"}
-                              </p>
-                              <p className="mt-5 text-[12px] font-medium uppercase tracking-wide text-[#8E8E93]">
-                                Found on label
-                              </p>
-                              <p className="mt-1 text-[17px] font-normal text-[#1C1C1E]">
-                                {currentCheck.field === "governmentWarning" && !govWarningExpanded && (currentCheck.actual ?? "").length > 80
-                                  ? (currentCheck.actual ?? "").slice(0, 80) + "…"
-                                  : currentCheck.actual ?? "—"}
-                              </p>
-                              {currentCheck.field === "governmentWarning" &&
-                                ((currentCheck.expected ?? "").length > 80 || (currentCheck.actual ?? "").length > 80) && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setGovWarningExpanded((v) => !v)}
-                                    className="mt-2 text-[15px] font-semibold text-[#007AFF] hover:opacity-80"
-                                  >
-                                    {govWarningExpanded ? "Show less" : "Show full text"}
-                                  </button>
-                                )}
-                              {currentCheck.notes ? (
-                                <p className="mt-5 text-[15px] font-normal italic text-[#8E8E93]">
-                                  {currentCheck.notes}
-                                  {currentCheck.noteHref && (
-                                    <>
-                                      {" "}
-                                      <a
-                                        href={currentCheck.noteHref}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="not-italic font-semibold text-[#007AFF] underline hover:opacity-80"
-                                      >
-                                        TTB regulations ↗
-                                      </a>
-                                    </>
-                                  )}
-                                </p>
-                              ) : null}
-                              <div className="mt-8 flex flex-col gap-4">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (isLastField) {
-                                      setReviewMode("complete");
-                                    } else {
-                                      setCurrentReviewIndex((i) => i + 1);
-                                    }
-                                  }}
-                                  className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[16px] border-2 border-[#34C759]/40 bg-[#F2F2F7] px-6 py-4 text-[17px] font-semibold text-[#248A3D] transition-all duration-500 active:scale-[0.97] hover:scale-[1.02]"
-                                >
-                                  <span aria-hidden>✓</span> Accept — Values Match
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setFlaggedFields((prev) => new Set(prev).add(currentCheck.field));
-                                    if (isLastField) {
-                                      setReviewMode("complete");
-                                    } else {
-                                      setCurrentReviewIndex((i) => i + 1);
-                                    }
-                                  }}
-                                  className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[16px] border-2 border-[#FF453A]/40 bg-[#F2F2F7] px-6 py-4 text-[17px] font-semibold text-[#D70015] transition-all duration-500 active:scale-[0.97] hover:scale-[1.02]"
-                                >
-                                  <span aria-hidden>✕</span> Flag — Does Not Match
-                                </button>
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <p
-                                className="text-[22px] font-semibold text-[#1C1C1E]"
-                                style={{ letterSpacing: "-0.01em" }}
-                              >
-                                ✗ {fieldLabel}
-                              </p>
-                              <p className="mt-4 text-[17px] font-normal text-[#1C1C1E]">
-                                Couldn't read {fieldLabel} clearly from the
-                                photo.
-                              </p>
-                              <p className="mt-2 text-[15px] font-normal text-[#8E8E93]">
-                                Enter the value manually, or flag as missing.
-                              </p>
-                              <input
-                                type="text"
-                                placeholder="Type what the label says"
-                                value={
-                                  manualOverrides[currentCheck.field] ?? ""
-                                }
-                                onChange={(e) =>
-                                  setManualOverrides((prev) => ({
-                                    ...prev,
-                                    [currentCheck.field]: e.target.value,
-                                  }))
-                                }
-                                className="mt-4 w-full rounded-[16px] border-2 border-[#E5E5EA] bg-white px-4 py-3 text-[17px] text-[#1C1C1E] placeholder:text-[#C7C7CC] focus:border-[#8E8E93] focus:outline-none focus:ring-2 focus:ring-[#8E8E93]/20"
-                                style={{ minHeight: "52px" }}
-                              />
-                              {currentCheck.expected ? (
-                                <p className="mt-4 text-[15px] text-[#8E8E93]">
-                                  Expected: {currentCheck.expected}
-                                </p>
-                              ) : null}
-                              <div className="mt-8 flex flex-col gap-4">
-                                <button
-                                  type="button"
-                                  disabled={!(manualOverrides[currentCheck.field] ?? "").trim()}
-                                  onClick={() => {
-                                    if (isLastField) {
-                                      setReviewMode("complete");
-                                    } else {
-                                      setCurrentReviewIndex((i) => i + 1);
-                                    }
-                                  }}
-                                  className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[16px] border-2 border-[#34C759]/40 bg-[#F2F2F7] px-6 py-4 text-[17px] font-semibold text-[#248A3D] transition-all duration-500 active:scale-[0.97] hover:scale-[1.02] disabled:opacity-40 disabled:hover:scale-100"
-                                >
-                                  <span aria-hidden>✓</span> Accept — I Entered the Value
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setFlaggedFields((prev) => new Set(prev).add(currentCheck.field));
-                                    if (isLastField) {
-                                      setReviewMode("complete");
-                                    } else {
-                                      setCurrentReviewIndex((i) => i + 1);
-                                    }
-                                  }}
-                                  className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[16px] border-2 border-[#FF453A]/40 bg-[#F2F2F7] px-6 py-4 text-[17px] font-semibold text-[#D70015] transition-all duration-500 active:scale-[0.97] hover:scale-[1.02]"
-                                >
-                                  <span aria-hidden>✕</span> Flag — Field Missing from Label
-                                </button>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </section>
-                    );
-                  }
-
-                  /* ——— COMPLETE ——— */
-                  if (reviewMode === "complete") {
-                    const durationSec =
-                      activeResult.status === "success"
-                        ? (activeResult.durationMs / 1000).toFixed(1)
-                        : "—";
-                    const flaggedCount = flaggedFields.size;
-                    const acceptedCount = totalReviewCount - flaggedCount;
-                    const hasFlags = flaggedCount > 0;
-                    return (
-                      <ReviewCompleteCard
-                        hasFlags={hasFlags}
-                        flaggedCount={flaggedCount}
-                        acceptedCount={acceptedCount}
-                        matchCount={matchCount}
-                        durationSec={durationSec}
-                        onNextLabel={() =>
-                          setCurrentResultIndex(safeIndex + 1)
-                        }
-                        onViewBatchSummary={() => setBatchTab("summary")}
-                        currentIndex={safeIndex}
-                        totalLabels={results.length}
-                        onPrev={() =>
-                          setCurrentResultIndex((i) => Math.max(0, i - 1))
-                        }
-                        onNext={() =>
-                          setCurrentResultIndex((i) =>
-                            Math.min(results.length - 1, i + 1),
-                          )
-                        }
-                      />
+                          onAcceptEntered={goNext}
+                        />
+                        {results.length > 1 ? (
+                          <LabelNav
+                            currentIndex={safeIndex}
+                            total={results.length}
+                            onPrev={() =>
+                              setCurrentResultIndex((i) => Math.max(0, i - 1))
+                            }
+                            onNext={() =>
+                              setCurrentResultIndex((i) =>
+                                Math.min(results.length - 1, i + 1),
+                              )
+                            }
+                          />
+                        ) : null}
+                      </>
                     );
                   }
 
@@ -878,7 +648,15 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (anyResultHasIssues && reviewMode !== "complete") {
+                    const allLabelsReviewed =
+                      results.length > 0 &&
+                      results.every(
+                        (_, i) => perLabelReviewState.current[i] != null,
+                      );
+                    if (
+                      anyResultHasIssues &&
+                      !allLabelsReviewed
+                    ) {
                       setConfirmingReset(true);
                     } else {
                       resetWizard();
