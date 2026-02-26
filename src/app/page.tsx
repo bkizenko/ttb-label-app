@@ -4,6 +4,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CatastrophicErrorModal } from "@/components/CatastrophicErrorModal";
 import { LabelNav } from "@/components/LabelNav";
+import { ProcessingOverlay } from "@/components/ProcessingOverlay";
+import { Step1Upload } from "@/components/Step1Upload";
+import { Step2AppData } from "@/components/Step2AppData";
 import { ThumbnailCard } from "@/components/ThumbnailCard";
 import { WizardProgress } from "@/components/WizardProgress";
 import {
@@ -336,134 +339,15 @@ export default function Home() {
             </div>
           </header>
 
-          {error ? (
-            <div className="rounded-[20px] border border-[#FF3B30]/30 bg-red-50 px-4 py-3 text-[16px] text-[#FF3B30] depth-1">
-              {error}
-            </div>
-          ) : null}
-
-          {uploadFileTypeError ? (
-            <div
-              className="animate-error-shake flex items-center gap-3 rounded-[20px] border border-[#FF3B30]/20 bg-[#FFE5E5] px-4 py-3 depth-1"
-              role="alert"
-              aria-live="polite"
-            >
-              <span
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#FF3B30] text-sm font-bold text-white"
-                aria-hidden
-              >
-                ×
-              </span>
-              <p className="text-[15px] font-semibold text-[#1C1C1E]">
-                {uploadFileTypeError}
-              </p>
-            </div>
-          ) : null}
-
-          <main className="flex flex-col gap-10">
-            <section
-              className="overflow-hidden rounded-[20px] bg-white p-8"
-              style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}
-            >
-              <label
-                className={`step1-upload-zone-in flex min-h-[400px] cursor-pointer flex-col items-center justify-center rounded-[20px] px-4 py-10 text-center transition-all duration-500 hover:scale-[1.02] ${
-                  fileList.length
-                    ? "border-2 border-[#30D158] border-solid bg-[#F0FDF4] hover:border-[#30D158]"
-                    : "border-[3px] border-dashed border-[#D1D5DB] bg-gradient-to-b from-white to-[#FAFBFC] hover:border-[#9CA3AF]"
-                }`}
-              >
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="hidden"
-                  onChange={(event) => handleFilesSelected(event.target.files)}
-                />
-                {fileList.length ? (
-                  <span className="mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-[#30D158]/20 text-2xl text-[#30D158]">
-                    ✓
-                  </span>
-                ) : (
-                  <span
-                    className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl text-5xl"
-                    style={{
-                      background:
-                        "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
-                      color: "white",
-                    }}
-                  >
-                    📸
-                  </span>
-                )}
-                <span className="text-[22px] font-semibold text-[#1C1C1E]">
-                  {fileList.length
-                    ? `${fileList.length} label${fileList.length > 1 ? "s" : ""} selected`
-                    : "Select label images"}
-                </span>
-                <span
-                  className="mt-2 text-[14px] text-[#8E8E93]"
-                  style={{ opacity: 0.6 }}
-                >
-                  {fileList.length
-                    ? "Tap the area again to add more"
-                    : "Tap to choose from your files"}
-                </span>
-              </label>
-
-              {fileList.length ? (
-                <div className="mt-6 space-y-4">
-                  <p className="text-[16px] font-semibold text-[#1C1C1E]">
-                    {fileList.length === 1
-                      ? "1 label selected"
-                      : `${fileList.length} labels selected`}
-                  </p>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    {fileList.map((file, index) => (
-                      <ThumbnailCard
-                        key={`${file.name}-${file.lastModified}`}
-                        file={file}
-                        onRemove={() =>
-                          removeSelectedFile(
-                            `${file.name}-${file.lastModified}`,
-                          )
-                        }
-                        style={{ animationDelay: `${index * 60}ms` }}
-                      />
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={clearAllFiles}
-                    className="min-h-[44px] rounded-[16px] border border-[#FF3B30]/30 bg-white px-4 py-2.5 text-[16px] font-semibold text-[#FF3B30] transition-all duration-500 hover:scale-[0.98] hover:bg-red-50 active:scale-[0.97]"
-                    style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}
-                  >
-                    <span aria-hidden>🗑</span> Clear all
-                  </button>
-                </div>
-              ) : null}
-            </section>
-
-            <div className="w-full sm:flex sm:justify-end">
-              <button
-                type="button"
-                disabled={!fileList.length}
-                onClick={() => setStep(2)}
-                className="w-full min-h-[56px] rounded-[16px] px-6 py-4 text-[16px] font-semibold text-white transition-all duration-500 hover:scale-[1.02] active:scale-[0.97] disabled:opacity-50 disabled:grayscale disabled:hover:scale-100 sm:w-auto"
-                style={{
-                  background:
-                    "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
-                  boxShadow: "0 4px 16px rgba(0, 0, 0, 0.08)",
-                }}
-              >
-                Next: Add application data
-              </button>
-            </div>
-            <p className="pt-6 text-center text-[13px] text-[#8E8E93]">
-              We encourage you to review TTB&apos;s guidelines at{" "}
-              <a href="https://www.ttb.gov" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#1C1C1E]">ttb.gov</a>{" "}
-              for additional context on label requirements.
-            </p>
-          </main>
+          <Step1Upload
+            error={error}
+            uploadFileTypeError={uploadFileTypeError}
+            fileList={fileList}
+            onFilesSelected={handleFilesSelected}
+            onRemoveFile={removeSelectedFile}
+            onClearAll={clearAllFiles}
+            onNext={() => setStep(2)}
+          />
         </div>
       </div>
     </>
@@ -471,8 +355,6 @@ export default function Home() {
   }
 
   if (step === 2) {
-    const firstFile = fileList[0];
-
     return (
       <div className="min-h-screen depth-0 text-[#1C1C1E]">
         <div role="status" aria-live="polite" aria-atomic="true" className="sr-only" key={step}>
@@ -502,346 +384,23 @@ export default function Home() {
             </div>
           </header>
 
-          {error ? (
-            <div className="rounded-[20px] border border-[#FF3B30]/30 bg-red-50 px-4 py-3 text-[16px] text-[#FF3B30] depth-1">
-              {error}
-            </div>
-          ) : null}
-
-          <main className="flex flex-col gap-10">
-            {firstFile ? (
-              <section
-                className="step2-preview-in flex h-[88px] items-center gap-4 rounded-[20px] bg-white px-4 depth-1"
-                style={{ minHeight: "88px" }}
-              >
-                <img
-                  src={URL.createObjectURL(firstFile)}
-                  alt=""
-                  className="h-[72px] w-[72px] shrink-0 rounded-[16px] bg-[#F2F2F7] object-contain"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="text-[14px] font-normal text-[#8E8E93]">
-                    Label image ready
-                  </p>
-                  <p className="mt-0.5 truncate text-[14px] text-[#8E8E93]">
-                    {fileList.length > 1
-                      ? `${fileList.length} labels — each compared against the application record below`
-                      : firstFile.name}
-                  </p>
-                </div>
-              </section>
-            ) : null}
-
-            <section
-              className="overflow-hidden rounded-[20px] bg-white p-8 depth-1"
-              style={{ padding: "32px" }}
-            >
-              <form
-                className="space-y-7"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void handleRunWizard();
-                }}
-              >
-                <p
-                  className="text-[14px] font-semibold uppercase tracking-wider text-[#8E8E93]"
-                  style={{ letterSpacing: "0.5px" }}
-                >
-                  Application record
-                </p>
-
-
-                <div
-                  className="step2-field-in"
-                  style={{ animationDelay: "0ms" }}
-                >
-                  <label
-                    htmlFor="brand-name"
-                    className="mb-1.5 block text-[14px] font-medium text-[#8E8E93]"
-                  >
-                    Brand name
-                  </label>
-                  <div className="relative">
-                    <input
-                      id="brand-name"
-                      type="text"
-                      value={applicationData.brandName}
-                      onChange={(event) =>
-                        setApplicationData((current) => ({
-                          ...current,
-                          brandName: event.target.value,
-                        }))
-                      }
-                      placeholder="Enter brand name from application"
-                      className="input-apple h-14 w-full rounded-[16px] border border-[#E5E5EA] bg-white px-4 text-[16px] text-[#1C1C1E] placeholder:opacity-60"
-                      style={{ minHeight: "56px" }}
-                    />
-                    {applicationData.brandName.trim() ? (
-                      <span
-                        className="field-checkmark-in absolute right-3 top-1/2 -translate-y-1/2 text-[#30D158]"
-                        aria-hidden
-                      >
-                        ✓
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="mt-1 text-[14px] text-[#8E8E93]" style={{ opacity: 0.6 }}>
-                    Primary brand name on the approved application
-                  </p>
-                </div>
-
-                <div className="step2-field-in space-y-1.5">
-                  <label
-                    htmlFor="class-type"
-                    className="block text-[14px] font-medium text-[#8E8E93]"
-                  >
-                    Class / type
-                  </label>
-                  <input
-                    id="class-type"
-                    type="text"
-                    value={applicationData.classType}
-                    onChange={(event) =>
-                      setApplicationData((current) => ({
-                        ...current,
-                        classType: event.target.value,
-                      }))
-                    }
-                    placeholder="e.g., Bourbon Whiskey, IPA, Cabernet Sauvignon"
-                    className="input-apple h-14 w-full rounded-[16px] border border-[#E5E5EA] bg-white px-4 text-[16px] text-[#1C1C1E] placeholder:opacity-60"
-                    style={{ minHeight: "56px" }}
-                  />
-                </div>
-
-                <div className="step2-field-in grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <label
-                      htmlFor="alcohol"
-                      className="block text-[14px] font-medium text-[#8E8E93]"
-                    >
-                      Alcohol content
-                    </label>
-                    <input
-                      id="alcohol"
-                      type="text"
-                      value={applicationData.alcoholContent}
-                      onChange={(event) =>
-                        setApplicationData((current) => ({
-                          ...current,
-                          alcoholContent: event.target.value,
-                        }))
-                      }
-                      placeholder="e.g., 45% Alc./Vol. or 90 Proof"
-                      className="input-apple h-14 w-full rounded-[16px] border border-[#E5E5EA] bg-white px-4 text-[16px] text-[#1C1C1E] placeholder:opacity-60"
-                      style={{ minHeight: "56px" }}
-                    />
-                    <p className="mt-1 text-[12px] text-[#8E8E93]">
-                      Optional for some wine/beer types
-                    </p>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label
-                      htmlFor="net-contents"
-                      className="block text-[14px] font-medium text-[#8E8E93]"
-                    >
-                      Net contents
-                    </label>
-                    <input
-                      id="net-contents"
-                      type="text"
-                      value={applicationData.netContents}
-                      onChange={(event) =>
-                        setApplicationData((current) => ({
-                          ...current,
-                          netContents: event.target.value,
-                        }))
-                      }
-                      placeholder="e.g., 750 mL or 12 fl oz"
-                      className="input-apple h-14 w-full rounded-[16px] border border-[#E5E5EA] bg-white px-4 text-[16px] text-[#1C1C1E] placeholder:opacity-60"
-                      style={{ minHeight: "56px" }}
-                    />
-                  </div>
-                </div>
-
-                <div className="step2-field-in space-y-1.5">
-                  <label
-                    htmlFor="bottler-name-address"
-                    className="block text-[14px] font-medium text-[#8E8E93]"
-                  >
-                    Bottler/Producer name & address
-                  </label>
-                  <input
-                    id="bottler-name-address"
-                    type="text"
-                    value={applicationData.bottlerNameAddress}
-                    onChange={(event) =>
-                      setApplicationData((current) => ({
-                        ...current,
-                        bottlerNameAddress: event.target.value,
-                      }))
-                    }
-                    placeholder="e.g., Bottled by Old Tom Distillery, 123 Main St, Louisville, KY"
-                    className="input-apple h-14 w-full rounded-[16px] border border-[#E5E5EA] bg-white px-4 text-[16px] text-[#1C1C1E] placeholder:opacity-60"
-                    style={{ minHeight: "56px" }}
-                  />
-                </div>
-
-                <div className="step2-field-in space-y-1.5">
-                  <label
-                    htmlFor="country-of-origin"
-                    className="block text-[14px] font-medium text-[#8E8E93]"
-                  >
-                    Country of origin
-                  </label>
-                  <input
-                    id="country-of-origin"
-                    type="text"
-                    value={applicationData.countryOfOrigin}
-                    onChange={(event) =>
-                      setApplicationData((current) => ({
-                        ...current,
-                        countryOfOrigin: event.target.value,
-                      }))
-                    }
-                    placeholder="e.g., Mexico (leave blank if domestic)"
-                    className="input-apple h-14 w-full rounded-[16px] border border-[#E5E5EA] bg-white px-4 text-[16px] text-[#1C1C1E] placeholder:opacity-60"
-                    style={{ minHeight: "56px" }}
-                  />
-                </div>
-
-                <div className="step2-field-in space-y-1.5">
-                  <label
-                    htmlFor="government-warning"
-                    className="block text-[14px] font-medium text-[#8E8E93]"
-                  >
-                    Government health warning
-                  </label>
-                  <textarea
-                    id="government-warning"
-                    value={applicationData.governmentWarning}
-                    onChange={(event) =>
-                      setApplicationData((current) => ({
-                        ...current,
-                        governmentWarning: event.target.value,
-                      }))
-                    }
-                    rows={4}
-                    className="input-apple w-full resize-y rounded-[16px] border border-[#E5E5EA] bg-white px-4 py-3 text-[16px] leading-relaxed text-[#1C1C1E] placeholder:opacity-60"
-                    style={{ lineHeight: 1.6 }}
-                  />
-                  <p className="mt-1 text-[12px] text-[#8E8E93]">
-                    Standard TTB warning (pre-filled)
-                  </p>
-                </div>
-
-                <div className="step2-buttons-in flex flex-col gap-4 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setStep(1)}
-                    className="self-start min-h-[44px] min-w-[44px] text-[16px] font-normal text-[#007AFF] transition-opacity hover:opacity-80"
-                    title="Go back (Escape)"
-                  >
-                    Back
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isProcessing || !fileList.length || !applicationData.brandName.trim()}
-                    title="Run verification (Enter)"
-                    className="flex w-full min-h-[56px] items-center justify-center gap-2 rounded-[16px] px-6 py-4 text-[16px] font-semibold text-white transition-all duration-500 hover:scale-[1.02] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:grayscale disabled:hover:scale-100 depth-2"
-                    style={{
-                      background:
-                        "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
-                    }}
-                  >
-                    {isProcessing ? (
-                      <>
-                        <span
-                          className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"
-                          aria-hidden
-                        />
-                        Running verification…
-                      </>
-                    ) : (
-                      "Run verification"
-                    )}
-                  </button>
-                </div>
-              </form>
-            </section>
-            <p className="pt-6 text-center text-[13px] text-[#8E8E93]">
-              We encourage you to review TTB&apos;s guidelines at{" "}
-              <a href="https://www.ttb.gov" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#1C1C1E]">ttb.gov</a>{" "}
-              for additional context on label requirements.
-            </p>
-          </main>
+          <Step2AppData
+            applicationData={applicationData}
+            setApplicationData={setApplicationData}
+            fileList={fileList}
+            error={error}
+            isProcessing={isProcessing}
+            onBack={() => setStep(1)}
+            onSubmit={handleRunWizard}
+          />
         </div>
         {isProcessing && (
-          <div
-            className="animate-loading-screen-in fixed inset-0 z-50 flex flex-col items-center overflow-y-auto bg-[#F5F7FA] px-4 pt-12 pb-10"
-            aria-live="polite"
-            aria-busy="true"
-          >
-            <div className="animate-loading-content-in flex flex-col items-center">
-              {processingPreviewUrl ? (
-                <img
-                  src={processingPreviewUrl}
-                  alt=""
-                  className="h-[280px] w-auto max-w-[380px] shrink-0 object-contain rounded-[20px] depth-1 bg-white"
-                />
-              ) : (
-                <div className="h-[280px] w-[380px] shrink-0 rounded-[20px] bg-[#E5E5EA] depth-1" />
-              )}
-              <p className="mt-5 text-[28px] font-bold text-[#1C1C1E]">
-                {processingTotal > 1
-                  ? `Processing label ${processingCurrent} of ${processingTotal}`
-                  : "Analyzing label..."}
-              </p>
-              <p className="mt-2 text-[20px] text-[#8E8E93]">
-                {processingFieldLabel ? `Checking ${processingFieldLabel}...` : "Starting..."}
-              </p>
-            </div>
-            {processingTotal > 1 && (
-              <div className="mx-auto mt-4 w-full max-w-[600px]">
-                <div
-                  className="h-1.5 w-full overflow-hidden rounded-full bg-[#E5E5EA]"
-                  role="progressbar"
-                  aria-valuenow={processingCurrent}
-                  aria-valuemin={0}
-                  aria-valuemax={processingTotal}
-                >
-                  <div
-                    className="h-full rounded-full bg-[#007AFF] transition-all duration-300 ease-out"
-                    style={{
-                      width: processingTotal
-                        ? `${(processingCurrent / processingTotal) * 100}%`
-                        : "0%",
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-            <div className="animate-loading-content-in mx-auto mt-8 flex w-full max-w-[600px] flex-col gap-4" style={{ animationDelay: "0.15s" }}>
-              {[
-                "Brand name",
-                "Class/Type",
-                "Alcohol content",
-                "Net contents",
-                "Bottler/Producer name & address",
-                "Country of origin",
-                "Government warning",
-              ].map((label) => (
-                <div key={label} className="flex flex-col gap-2">
-                  <span className="text-[14px] font-medium text-[#8E8E93]">
-                    {label}
-                  </span>
-                  <div
-                    className="skeleton-shimmer h-12 w-full rounded-[16px]"
-                    aria-hidden
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
+          <ProcessingOverlay
+            processingPreviewUrl={processingPreviewUrl}
+            processingCurrent={processingCurrent}
+            processingTotal={processingTotal}
+            processingFieldLabel={processingFieldLabel}
+          />
         )}
       </div>
     );
