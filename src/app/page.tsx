@@ -2,6 +2,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CatastrophicErrorModal } from "@/components/CatastrophicErrorModal";
+import { LabelNav } from "@/components/LabelNav";
+import { ThumbnailCard } from "@/components/ThumbnailCard";
+import { WizardProgress } from "@/components/WizardProgress";
 import {
   STANDARD_GOVERNMENT_WARNING,
   type ApplicationLabelData,
@@ -14,80 +18,6 @@ import {
   type Mode,
   type VerificationResult,
 } from "@/lib/types";
-
-function ThumbnailCard({
-  file,
-  onRemove,
-  style,
-}: {
-  file: File;
-  onRemove: () => void;
-  style?: React.CSSProperties;
-}) {
-  const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
-  const [url, setUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    const objectUrl = URL.createObjectURL(file);
-    setUrl(objectUrl);
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [file]);
-
-  const sizeMB = file.size / (1024 * 1024);
-  const sizeStr =
-    sizeMB >= 1
-      ? `${sizeMB.toFixed(1)} MB`
-      : `${(file.size / 1024).toFixed(1)} KB`;
-  const dimsStr = dims ? `${dims.w}×${dims.h}` : "";
-
-  return (
-    <figure
-      className="step1-thumb-in group relative flex flex-col gap-2 rounded-[20px] border border-[#E5E5EA] bg-white p-2 transition-all duration-500 hover:scale-[1.04] hover:border-[#D1D5DB] hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)]"
-      style={{
-        ...style,
-        boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-      }}
-    >
-      <button
-        type="button"
-        aria-label={`Remove ${file.name}`}
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          onRemove();
-        }}
-        className="absolute right-2 top-2 z-10 inline-flex h-9 w-9 items-center justify-center bg-transparent"
-      >
-        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/95 text-[14px] font-semibold leading-none text-[#1C1C1E] shadow-sm ring-1 ring-black/10 transition-transform duration-150 hover:scale-[1.02]">
-          ×
-        </span>
-      </button>
-
-      <div className="overflow-hidden rounded-[12px]">
-        {url ? (
-          <img
-            src={url}
-            alt={file.name}
-            className="h-[140px] w-full rounded-[12px] bg-[#FAFBFC] object-contain transition-transform duration-300 ease-out group-hover:scale-110"
-            onLoad={(e) => {
-              const img = e.currentTarget;
-              setDims({ w: img.naturalWidth, h: img.naturalHeight });
-            }}
-          />
-        ) : (
-          <div className="h-[140px] w-full rounded-[12px] bg-[#FAFBFC]" />
-        )}
-      </div>
-      <figcaption className="truncate text-[16px] font-medium text-[#1C1C1E]">
-        {file.name}
-      </figcaption>
-      <p className="text-[14px] text-[#8E8E93]">
-        {sizeStr}
-        {dimsStr ? ` • ${dimsStr}` : ""}
-      </p>
-    </figure>
-  );
-}
 
 export default function Home() {
   const [mode, setMode] = useState<Mode>("single");
@@ -346,57 +276,8 @@ export default function Home() {
     setGovWarningExpanded(false);
   }, [currentReviewIndex]);
 
-  const renderProgress = () => {
-    const hasBatchSummary = step === 3 && results.length >= 1;
-    const isOnSummaryTab = hasBatchSummary && batchTab === "summary";
-    const isStep1 = step === 1;
-    return (
-      <div
-        className={`mb-6 flex items-center gap-3 ${isStep1 ? "step1-progress-in" : ""}`}
-      >
-        <span className="text-[17px] font-bold text-[#1C1C1E]">
-          {step === 1 && "Step 1 of 3"}
-          {step === 2 && "Step 2 of 3"}
-          {step === 3 && !hasBatchSummary && "Step 3 of 3"}
-          {step === 3 && hasBatchSummary && !isOnSummaryTab && "Step 3 of 4"}
-          {step === 3 && hasBatchSummary && isOnSummaryTab && "Step 4 of 4"}
-        </span>
-        <div className="flex items-center gap-2">
-          {[1, 2, 3].map((s) => (
-            <span
-              key={s}
-              className={`rounded-full transition-all duration-300 ${
-                step === s && !isOnSummaryTab
-                  ? "progress-dot-active h-3.5 w-3.5 scale-125 bg-[#007AFF] sm:scale-[1.4]"
-                  : step > s || (step === s && isOnSummaryTab)
-                    ? "h-3.5 w-3.5 bg-[#30D158]"
-                    : "h-3.5 w-3.5 bg-[#C7C7CC]"
-              }`}
-              style={
-                step === s && !isOnSummaryTab
-                  ? { boxShadow: "0 0 8px rgba(0, 122, 255, 0.5)" }
-                  : undefined
-              }
-            />
-          ))}
-          {hasBatchSummary && (
-            <span
-              className={`rounded-full transition-all duration-300 ${
-                isOnSummaryTab
-                  ? "progress-dot-active h-3.5 w-3.5 scale-125 bg-[#007AFF] sm:scale-[1.4]"
-                  : "h-3.5 w-3.5 bg-[#C7C7CC]"
-              }`}
-              style={
-                isOnSummaryTab
-                  ? { boxShadow: "0 0 8px rgba(0, 122, 255, 0.5)" }
-                  : undefined
-              }
-            />
-          )}
-        </div>
-      </div>
-    );
-  };
+  const hasBatchSummary = step === 3 && results.length >= 1;
+  const isOnSummaryTab = hasBatchSummary && batchTab === "summary";
 
   /* Screen reader: announce step changes */
   const stepAnnouncement =
@@ -419,31 +300,10 @@ export default function Home() {
           {stepAnnouncement}
         </div>
         {catastrophicError ? (
-          <div
-            className="fixed inset-0 z-[100] flex items-center justify-center p-4"
-            style={{
-              backdropFilter: "blur(12px)",
-              backgroundColor: "rgba(0,0,0,0.2)",
-            }}
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="catastrophic-error-heading"
-          >
-            <div
-              className="w-full max-w-md animate-fade-scale-in rounded-[20px] bg-white p-6 depth-3"
-              style={{ animationDuration: "0.3s" }}
-            >
-              <div className="flex flex-col items-center gap-4 text-center">
-                <span className="flex h-10 w-10 items-center justify-center text-[40px] text-[#8E8E93]" aria-hidden>⚠</span>
-                <h2 id="catastrophic-error-heading" className="text-[22px] font-semibold text-[#1C1C1E]">Something went wrong</h2>
-                <p className="text-[16px] leading-relaxed text-[#8E8E93]">{catastrophicError}</p>
-                <div className="flex w-full flex-col gap-3 pt-2">
-                  <button type="button" onClick={() => setCatastrophicError(null)} className="flex min-h-[56px] w-full items-center justify-center rounded-[16px] bg-[#007AFF] px-4 py-3 text-[16px] font-semibold text-white depth-2">Try again</button>
-                  <a href="mailto:support@example.com?subject=TTB%20Label%20App%20Support" className="min-h-[44px] text-[16px] font-normal text-[#8E8E93] hover:text-[#1C1C1E]">Contact support</a>
-                </div>
-              </div>
-            </div>
-          </div>
+          <CatastrophicErrorModal
+            message={catastrophicError}
+            onDismiss={() => setCatastrophicError(null)}
+          />
         ) : null}
         <div className="min-h-screen depth-0 text-[#1C1C1E]">
         <div className="mx-auto flex max-w-xl flex-col gap-10 px-4 py-10 sm:py-12">
@@ -454,7 +314,7 @@ export default function Home() {
             >
               TTB Label Verification
             </p>
-            {renderProgress()}
+            <WizardProgress step={step} hasBatchSummary={hasBatchSummary} isOnSummaryTab={isOnSummaryTab} />
             <div className="step1-header-in flex items-center gap-4">
               <div
                 className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl text-4xl"
@@ -619,58 +479,14 @@ export default function Home() {
           {stepAnnouncement}
         </div>
         {catastrophicError ? (
-          <div
-            className="fixed inset-0 z-[100] flex items-center justify-center p-4"
-            style={{
-              backdropFilter: "blur(12px)",
-              backgroundColor: "rgba(0,0,0,0.2)",
-            }}
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="catastrophic-error-heading"
-          >
-            <div
-              className="w-full max-w-md animate-fade-scale-in rounded-[20px] bg-white p-6 depth-3"
-              style={{ animationDuration: "0.3s" }}
-            >
-              <div className="flex flex-col items-center gap-4 text-center">
-                <span
-                  className="flex h-10 w-10 items-center justify-center text-[40px] text-[#8E8E93]"
-                  aria-hidden
-                >
-                  ⚠
-                </span>
-                <h2
-                  id="catastrophic-error-heading"
-                  className="text-[22px] font-semibold text-[#1C1C1E]"
-                >
-                  Something went wrong
-                </h2>
-                <p className="text-[16px] leading-relaxed text-[#8E8E93]">
-                  {catastrophicError}
-                </p>
-                <div className="flex w-full flex-col gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setCatastrophicError(null)}
-                    className="flex min-h-[56px] w-full items-center justify-center rounded-[16px] bg-[#007AFF] px-4 py-3 text-[16px] font-semibold text-white depth-2"
-                  >
-                    Try again
-                  </button>
-                  <a
-                    href="mailto:support@example.com?subject=TTB%20Label%20App%20Support"
-                    className="min-h-[44px] text-[16px] font-normal text-[#8E8E93] hover:text-[#1C1C1E]"
-                  >
-                    Contact support
-                  </a>
-                </div>
-              </div>
-            </div>
-          </div>
+          <CatastrophicErrorModal
+            message={catastrophicError}
+            onDismiss={() => setCatastrophicError(null)}
+          />
         ) : null}
         <div className="mx-auto flex max-w-xl flex-col gap-10 px-4 py-10 sm:py-12">
           <header className="space-y-2">
-            {renderProgress()}
+            <WizardProgress step={step} hasBatchSummary={hasBatchSummary} isOnSummaryTab={isOnSummaryTab} />
             <div className="step2-header-in flex items-center gap-4">
               <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#007AFF]/10 text-3xl">
                 📝
@@ -1065,25 +881,10 @@ export default function Home() {
           {stepAnnouncement}
         </div>
         {catastrophicError ? (
-          <div
-            className="fixed inset-0 z-[100] flex items-center justify-center p-4"
-            style={{ backdropFilter: "blur(12px)", backgroundColor: "rgba(0,0,0,0.2)" }}
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="catastrophic-error-heading"
-          >
-            <div className="w-full max-w-md animate-fade-scale-in rounded-[20px] bg-white p-6 depth-3" style={{ animationDuration: "0.3s" }}>
-              <div className="flex flex-col items-center gap-4 text-center">
-                <span className="flex h-10 w-10 items-center justify-center text-[40px] text-[#8E8E93]" aria-hidden>⚠</span>
-                <h2 id="catastrophic-error-heading" className="text-[22px] font-semibold text-[#1C1C1E]">Something went wrong</h2>
-                <p className="text-[16px] leading-relaxed text-[#8E8E93]">{catastrophicError}</p>
-                <div className="flex w-full flex-col gap-3 pt-2">
-                  <button type="button" onClick={() => setCatastrophicError(null)} className="flex min-h-[56px] w-full items-center justify-center rounded-[16px] bg-[#007AFF] px-4 py-3 text-[16px] font-semibold text-white depth-2">Try again</button>
-                  <a href="mailto:support@example.com?subject=TTB%20Label%20App%20Support" className="min-h-[44px] text-[16px] font-normal text-[#8E8E93] hover:text-[#1C1C1E]">Contact support</a>
-                </div>
-              </div>
-            </div>
-          </div>
+          <CatastrophicErrorModal
+            message={catastrophicError}
+            onDismiss={() => setCatastrophicError(null)}
+          />
         ) : null}
       <div className="min-h-screen depth-0 text-[#1C1C1E]">
         <div
@@ -1091,7 +892,7 @@ export default function Home() {
           style={{ animationDuration: "0.55s", animationTimingFunction: "ease-out" }}
         >
           <header className="space-y-2">
-            {renderProgress()}
+            <WizardProgress step={step} hasBatchSummary={hasBatchSummary} isOnSummaryTab={isOnSummaryTab} />
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#30D158]/10 text-2xl text-[#30D158]">
                 ✓
@@ -1665,35 +1466,18 @@ export default function Home() {
                           </div>
                         </div>
                         {results.length > 1 && (
-                          <div className="flex items-center justify-center gap-4 pt-4">
-                            <button
-                              type="button"
-                              aria-label="Previous label"
-                              disabled={safeIndex === 0}
-                              onClick={() =>
-                                setCurrentResultIndex((i) => Math.max(0, i - 1))
-                              }
-                              className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-[12px] border border-[#E5E5EA] bg-white text-[#1C1C1E] transition-transform duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                              ‹
-                            </button>
-                            <span className="min-w-[80px] text-center text-[15px] text-[#8E8E93]">
-                              {safeIndex + 1} / {results.length}
-                            </span>
-                            <button
-                              type="button"
-                              aria-label="Next label"
-                              disabled={safeIndex >= results.length - 1}
-                              onClick={() =>
-                                setCurrentResultIndex((i) =>
-                                  Math.min(results.length - 1, i + 1),
-                                )
-                              }
-                              className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-[12px] border border-[#E5E5EA] bg-white text-[#1C1C1E] transition-transform duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                              ›
-                            </button>
-                          </div>
+                          <LabelNav
+                            currentIndex={safeIndex}
+                            total={results.length}
+                            onPrev={() =>
+                              setCurrentResultIndex((i) => Math.max(0, i - 1))
+                            }
+                            onNext={() =>
+                              setCurrentResultIndex((i) =>
+                                Math.min(results.length - 1, i + 1),
+                              )
+                            }
+                          />
                         )}
                       </section>
                     );
@@ -2015,29 +1799,18 @@ export default function Home() {
                           </div>
                         </div>
                         {results.length > 1 && (
-                          <div className="flex items-center justify-center gap-4 pt-4">
-                            <button
-                              type="button"
-                              aria-label="Previous label"
-                              disabled={safeIndex === 0}
-                              onClick={() => setCurrentResultIndex((i) => Math.max(0, i - 1))}
-                              className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-[12px] border border-[#E5E5EA] bg-white text-[#1C1C1E] transition-transform duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                              ‹
-                            </button>
-                            <span className="min-w-[80px] text-center text-[15px] text-[#8E8E93]">
-                              {safeIndex + 1} / {results.length}
-                            </span>
-                            <button
-                              type="button"
-                              aria-label="Next label"
-                              disabled={safeIndex >= results.length - 1}
-                              onClick={() => setCurrentResultIndex((i) => Math.min(results.length - 1, i + 1))}
-                              className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-[12px] border border-[#E5E5EA] bg-white text-[#1C1C1E] transition-transform duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                              ›
-                            </button>
-                          </div>
+                          <LabelNav
+                            currentIndex={safeIndex}
+                            total={results.length}
+                            onPrev={() =>
+                              setCurrentResultIndex((i) => Math.max(0, i - 1))
+                            }
+                            onNext={() =>
+                              setCurrentResultIndex((i) =>
+                                Math.min(results.length - 1, i + 1),
+                              )
+                            }
+                          />
                         )}
                       </section>
                     );
