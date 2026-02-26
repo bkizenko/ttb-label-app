@@ -9,32 +9,11 @@ import {
   type ExtractedLabelData,
   type FieldCheck,
 } from "@/lib/labelComparison";
-
-type VerificationResult =
-  | {
-      status: "success";
-      fileName: string;
-      checks: FieldCheck[];
-      rawOcrText: string;
-      durationMs: number;
-    }
-  | {
-      status: "ocr_failed";
-      fileName: string;
-      fileIndex: number; // index in results array; file is fileList[fileIndex] when in sync
-    };
-
-type Mode = "single" | "batch";
-
-const defaultApplicationData: ApplicationLabelData = {
-  brandName: "STONE'S THROW",
-  classType: "India Pale Ale",
-  alcoholContent: "6.5% Alc./Vol.",
-  netContents: "12 FL OZ",
-  bottlerNameAddress: "Stone's Throw Brewing Co, Portland, OR",
-  countryOfOrigin: "USA",
-  governmentWarning: STANDARD_GOVERNMENT_WARNING,
-};
+import {
+  defaultApplicationData,
+  type Mode,
+  type VerificationResult,
+} from "@/lib/types";
 
 const extractFromOcrText = (text: string): ExtractedLabelData => {
   const cleanText = text
