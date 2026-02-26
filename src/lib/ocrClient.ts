@@ -1,5 +1,57 @@
 import type { ExtractedLabelData } from "@/lib/labelComparison";
 
+/** Resize image so the long edge is at most this (px). Reduces payload and API time without hurting OCR. */
+const MAX_OCR_LONG_EDGE = 1500;
+
+/**
+ * Resize image for OCR if larger than MAX_OCR_LONG_EDGE. Preserves aspect ratio.
+ * Returns blob and mimeType (prefer JPEG for smaller size when possible).
+ */
+async function resizeImageForOcr(
+  file: File,
+): Promise<{ blob: Blob; mimeType: string }> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const w = img.naturalWidth;
+      const h = img.naturalHeight;
+      const maxEdge = Math.max(w, h);
+      if (maxEdge <= MAX_OCR_LONG_EDGE) {
+        resolve({ blob: file, mimeType: file.type || "image/png" });
+        return;
+      }
+      const scale = MAX_OCR_LONG_EDGE / maxEdge;
+      const cw = Math.round(w * scale);
+      const ch = Math.round(h * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = cw;
+      canvas.height = ch;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        resolve({ blob: file, mimeType: file.type || "image/png" });
+        return;
+      }
+      ctx.drawImage(img, 0, 0, cw, ch);
+      const outputMime = file.type === "image/png" ? "image/png" : "image/jpeg";
+      canvas.toBlob(
+        (blob) => {
+          if (blob) resolve({ blob, mimeType: outputMime });
+          else resolve({ blob: file, mimeType: file.type || "image/png" });
+        },
+        outputMime,
+        0.88,
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve({ blob: file, mimeType: file.type || "image/png" });
+    };
+    img.src = url;
+  });
+}
+
 export function extractFromOcrText(text: string): ExtractedLabelData {
   const cleanText = text
     .replace(/\|/g, " ")
@@ -161,7 +213,8 @@ export function extractFromOcrText(text: string): ExtractedLabelData {
 export async function ocrImage(
   file: File,
 ): Promise<{ text: string; extracted?: ExtractedLabelData }> {
-  const buffer = await file.arrayBuffer();
+  const { blob, mimeType } = await resizeImageForOcr(file);
+  const buffer = await blob.arrayBuffer();
   const bytes = new Uint8Array(buffer);
   let binary = "";
   for (let i = 0; i < bytes.byteLength; i++) {
@@ -171,7 +224,7 @@ export async function ocrImage(
   const res = await fetch("/api/ocr", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ imageBase64: base64, mimeType: file.type }),
+    body: JSON.stringify({ imageBase64: base64, mimeType }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
