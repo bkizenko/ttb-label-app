@@ -2173,11 +2173,7 @@ export default function Home() {
                                   type="button"
                                   onClick={() => {
                                     if (isLastField) {
-                                      if (safeIndex < results.length - 1) {
-                                        setCurrentResultIndex(safeIndex + 1);
-                                      } else {
-                                        setBatchTab("summary");
-                                      }
+                                      setReviewMode("complete");
                                     } else {
                                       setCurrentReviewIndex((i) => i + 1);
                                     }
@@ -2245,11 +2241,7 @@ export default function Home() {
                                   type="button"
                                   onClick={() => {
                                     if (isLastField) {
-                                      if (safeIndex < results.length - 1) {
-                                        setCurrentResultIndex(safeIndex + 1);
-                                      } else {
-                                        setBatchTab("summary");
-                                      }
+                                      setReviewMode("complete");
                                     } else {
                                       setCurrentReviewIndex((i) => i + 1);
                                     }
@@ -2263,11 +2255,7 @@ export default function Home() {
                                   onClick={() => {
                                     setFlaggedFields((prev) => new Set(prev).add(currentCheck.field));
                                     if (isLastField) {
-                                      if (safeIndex < results.length - 1) {
-                                        setCurrentResultIndex(safeIndex + 1);
-                                      } else {
-                                        setBatchTab("summary");
-                                      }
+                                      setReviewMode("complete");
                                     } else {
                                       setCurrentReviewIndex((i) => i + 1);
                                     }
@@ -2319,11 +2307,7 @@ export default function Home() {
                                   disabled={!(manualOverrides[currentCheck.field] ?? "").trim()}
                                   onClick={() => {
                                     if (isLastField) {
-                                      if (safeIndex < results.length - 1) {
-                                        setCurrentResultIndex(safeIndex + 1);
-                                      } else {
-                                        setBatchTab("summary");
-                                      }
+                                      setReviewMode("complete");
                                     } else {
                                       setCurrentReviewIndex((i) => i + 1);
                                     }
@@ -2337,11 +2321,7 @@ export default function Home() {
                                   onClick={() => {
                                     setFlaggedFields((prev) => new Set(prev).add(currentCheck.field));
                                     if (isLastField) {
-                                      if (safeIndex < results.length - 1) {
-                                        setCurrentResultIndex(safeIndex + 1);
-                                      } else {
-                                        setBatchTab("summary");
-                                      }
+                                      setReviewMode("complete");
                                     } else {
                                       setCurrentReviewIndex((i) => i + 1);
                                     }
