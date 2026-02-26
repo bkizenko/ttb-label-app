@@ -254,10 +254,30 @@ describe("compareLabelData", () => {
       bottlerNameAddress: baseApplication.bottlerNameAddress,
       countryOfOrigin: baseApplication.countryOfOrigin,
       governmentWarningText: STANDARD_GOVERNMENT_WARNING,
+      governmentWarningHeaderIsAllCaps: true,
+      governmentWarningHeaderIsBold: true,
     };
     const checks = compareLabelData(baseApplication, extracted);
     const warningCheck = checks.find((c) => c.field === "governmentWarning");
     expect(warningCheck?.status).toBe("match");
+  });
+
+  it("government warning: undefined bold/caps → mismatch with manual review note", () => {
+    const extracted: ExtractedLabelData = {
+      brandName: baseApplication.brandName,
+      classType: baseApplication.classType,
+      alcoholContent: baseApplication.alcoholContent,
+      netContents: baseApplication.netContents,
+      bottlerNameAddress: baseApplication.bottlerNameAddress,
+      countryOfOrigin: baseApplication.countryOfOrigin,
+      governmentWarningText: STANDARD_GOVERNMENT_WARNING,
+      // governmentWarningHeaderIsAllCaps and governmentWarningHeaderIsBold omitted (e.g. fallback parser)
+    };
+    const checks = compareLabelData(baseApplication, extracted);
+    const warningCheck = checks.find((c) => c.field === "governmentWarning");
+    expect(warningCheck?.status).toBe("mismatch");
+    expect(warningCheck?.notes).toContain("Unable to verify");
+    expect(warningCheck?.notes).toContain("manual review recommended");
   });
 
   it("reports missing when a field is not on the label", () => {

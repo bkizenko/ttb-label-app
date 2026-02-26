@@ -374,15 +374,23 @@ export const compareLabelData = (
     const expectedNormalized = normalizeForLooseMatch(expectedWarning);
     const actualNormalized = normalizeForLooseMatch(actualWarning);
     const textMatches = expectedNormalized === actualNormalized;
-    const capsOk = extracted.governmentWarningHeaderIsAllCaps !== false;
-    const boldOk = extracted.governmentWarningHeaderIsBold !== false;
+    const capsVerified = extracted.governmentWarningHeaderIsAllCaps === true;
+    const boldVerified = extracted.governmentWarningHeaderIsBold === true;
 
     const issues: string[] = [];
     if (!textMatches) issues.push("Warning text does not match word-for-word");
-    if (!capsOk) issues.push("'GOVERNMENT WARNING' header is not in all caps");
-    if (!boldOk) issues.push("'GOVERNMENT WARNING' header is not bold");
+    if (extracted.governmentWarningHeaderIsAllCaps === false) {
+      issues.push("'GOVERNMENT WARNING' header is not in all caps");
+    } else if (extracted.governmentWarningHeaderIsAllCaps === undefined) {
+      issues.push("Unable to verify all-caps formatting for 'GOVERNMENT WARNING:' — manual review recommended");
+    }
+    if (extracted.governmentWarningHeaderIsBold === false) {
+      issues.push("'GOVERNMENT WARNING' header is not bold");
+    } else if (extracted.governmentWarningHeaderIsBold === undefined) {
+      issues.push("Unable to verify bold formatting for 'GOVERNMENT WARNING:' — manual review recommended");
+    }
 
-    const allGood = textMatches && capsOk && boldOk;
+    const allGood = textMatches && capsVerified && boldVerified;
 
     checks.push({
       field: "governmentWarning",
