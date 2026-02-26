@@ -1554,7 +1554,10 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => {
-                      document.getElementById("first-failed-label")?.scrollIntoView({ behavior: "smooth" });
+                      if (firstFailedIndex >= 0) {
+                        setCurrentResultIndex(firstFailedIndex);
+                        setBatchTab("detail");
+                      }
                     }}
                     className="mt-3 text-[16px] font-semibold text-[#007AFF] hover:opacity-80"
                   >
@@ -1901,6 +1904,10 @@ export default function Home() {
                           };
                           return next;
                         });
+                        setReviewMode("reviewing");
+                        setCurrentReviewIndex(0);
+                        setManualOverrides({});
+                        setFlaggedFields(new Set());
                       }}
                       className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[16px] border-2 border-[#E5E5EA] bg-white px-4 py-3 text-[16px] font-semibold text-[#1C1C1E] transition-all duration-200 active:scale-[0.98] hover:scale-[1.02]"
                     >
@@ -1912,14 +1919,6 @@ export default function Home() {
                       className="min-h-[44px] text-[16px] font-normal text-[#8E8E93] hover:text-[#1C1C1E]"
                     >
                       Skip this label
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => runSingleImageVerification(safeIndex)}
-                      disabled={replacingResultIndex !== null}
-                      className="min-h-[44px] text-[16px] font-normal text-[#8E8E93] hover:text-[#1C1C1E] disabled:opacity-60"
-                    >
-                      Try again
                     </button>
                   </div>
                 </div>
@@ -2429,13 +2428,6 @@ export default function Home() {
                                 View Batch Summary
                               </button>
                             ) : null}
-                            <button
-                              type="button"
-                              onClick={resetWizard}
-                              className="min-h-[44px] text-center text-[16px] font-normal text-[#8E8E93] hover:text-[#1C1C1E]"
-                            >
-                              Check Another
-                            </button>
                           </div>
                         </div>
                         {results.length > 1 && (
