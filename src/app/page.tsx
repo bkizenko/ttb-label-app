@@ -497,36 +497,60 @@ export default function Home() {
 
       try {
         const newResults: VerificationResult[] = [];
+        const BATCH_SIZE = 3;
 
-        for (let index = 0; index < files.length; index++) {
-          const file = files[index];
-          const appData = applications[index] ?? applications[applications.length - 1];
-          setProcessingCurrent(index + 1);
-          const start = performance.now();
-          try {
-            const { text: ocrText, extracted: extractedFromApi } =
-              await ocrImage(file);
-            if (process.env.NODE_ENV === "development") {
-              console.log("RAW OCR TEXT:", ocrText);
-            }
-            const extracted =
-              extractedFromApi ?? extractFromOcrText(ocrText);
-            const checks = compareLabelData(appData, extracted);
-            const durationMs = performance.now() - start;
-            newResults.push({
-              status: "success" as const,
-              fileName: file.name,
-              checks,
-              rawOcrText: ocrText,
-              durationMs,
-            });
-          } catch {
-            newResults.push({
-              status: "ocr_failed" as const,
-              fileName: file.name,
-              fileIndex: index,
-            });
-          }
+        for (let batchStart = 0; batchStart < files.length; batchStart += BATCH_SIZE) {
+          const batchEnd = Math.min(batchStart + BATCH_SIZE, files.length);
+
+          const batchItems = files.slice(batchStart, batchEnd).map((file, i) => ({
+            file,
+            index: batchStart + i,
+            appData:
+              applications[batchStart + i] ??
+              applications[applications.length - 1],
+          }));
+
+          let batchCompleted = 0;
+          const batchResults = await Promise.all(
+            batchItems.map(async ({ file, index, appData }) => {
+              const start = performance.now();
+              try {
+                const timeoutMs = 30000;
+                const ocrPromise = ocrImage(file);
+                const timeoutPromise = new Promise<never>((_, reject) =>
+                  setTimeout(() => reject(new Error("OCR timeout")), timeoutMs),
+                );
+                const { text: ocrText, extracted: extractedFromApi } =
+                  await Promise.race([ocrPromise, timeoutPromise]);
+                if (process.env.NODE_ENV === "development") {
+                  console.log("RAW OCR TEXT:", ocrText);
+                }
+                const extracted =
+                  extractedFromApi ?? extractFromOcrText(ocrText);
+                const checks = compareLabelData(appData, extracted);
+                const durationMs = performance.now() - start;
+                batchCompleted++;
+                setProcessingCurrent(batchStart + batchCompleted);
+                return {
+                  status: "success" as const,
+                  fileName: file.name,
+                  checks,
+                  rawOcrText: ocrText,
+                  durationMs,
+                };
+              } catch {
+                batchCompleted++;
+                setProcessingCurrent(batchStart + batchCompleted);
+                return {
+                  status: "ocr_failed" as const,
+                  fileName: file.name,
+                  fileIndex: index,
+                };
+              }
+            }),
+          );
+
+          newResults.push(...batchResults);
           setResults([...newResults]);
         }
         setProgressMessage(null);
@@ -872,7 +896,7 @@ export default function Home() {
 
           <main className="flex flex-col gap-10">
             <section
-              className={`overflow-hidden rounded-[20px] bg-white p-8 ${fileList.length ? "upload-zone-pulse" : ""}`}
+              className="overflow-hidden rounded-[20px] bg-white p-8"
               style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}
             >
               <label
@@ -1642,6 +1666,55 @@ export default function Home() {
                       >
                         Export All as CSV
                       </button>
+                    </div>
+                  );
+                })()}
+                {(() => {
+                  const FIELD_KEYS = ["brandName", "classType", "alcoholContent", "netContents", "bottlerNameAddress", "countryOfOrigin", "governmentWarning", "alcoholContentFormat"] as const;
+                  const FIELD_LABELS: Record<string, string> = {
+                    brandName: "Brand name",
+                    classType: "Class/Type",
+                    alcoholContent: "Alcohol content",
+                    netContents: "Net contents",
+                    bottlerNameAddress: "Bottler/Producer",
+                    countryOfOrigin: "Country of origin",
+                    governmentWarning: "Government warning",
+                    alcoholContentFormat: "Alcohol content abbreviation",
+                  };
+                  const fieldCounts: Record<string, number> = {};
+                  for (const key of FIELD_KEYS) fieldCounts[key] = 0;
+                  for (const r of results) {
+                    if (r.status !== "success") continue;
+                    for (const check of r.checks) {
+                      if ((check.status === "mismatch" || check.status === "missing") && fieldCounts[check.field] !== undefined) {
+                        fieldCounts[check.field]++;
+                      }
+                    }
+                  }
+                  const problematic = FIELD_KEYS
+                    .map((key) => ({ field: key, count: fieldCounts[key] ?? 0 }))
+                    .filter((x) => x.count > 0)
+                    .sort((a, b) => b.count - a.count);
+                  const maxCount = problematic.length > 0 ? Math.max(...problematic.map((p) => p.count)) : 0;
+                  return (
+                    <div className="rounded-[20px] bg-white p-5 depth-1">
+                      <p className="text-[17px] font-semibold text-[#1C1C1E]">Most problematic fields</p>
+                      {problematic.length === 0 ? (
+                        <p className="mt-2 text-[15px] text-[#8E8E93]">No recurring field issues across labels.</p>
+                      ) : (
+                        <ul className="mt-3 list-none overflow-hidden rounded-[12px]" style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+                          {problematic.map(({ field, count }) => {
+                            const isHigh = maxCount > 0 && count >= maxCount * 0.6;
+                            const color = isHigh ? "#FF3B30" : "#FF9500";
+                            return (
+                              <li key={field} className="flex items-center justify-between border-b border-[#E5E5EA]/80 px-4 py-3 last:border-b-0">
+                                <span className="text-[15px] font-medium text-[#1C1C1E]">{FIELD_LABELS[field] ?? field}</span>
+                                <span className="text-[15px] font-semibold tabular-nums" style={{ color }}>{count} label{count !== 1 ? "s" : ""}</span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
                     </div>
                   );
                 })()}
