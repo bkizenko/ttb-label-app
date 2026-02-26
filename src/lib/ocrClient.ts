@@ -210,17 +210,25 @@ export function extractFromOcrText(text: string): ExtractedLabelData {
   };
 }
 
+/** Convert blob to base64 using FileReader (fast); avoids slow byte-by-byte loop. */
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const base64 = dataUrl.replace(/^data:[^;]+;base64,/, "");
+      resolve(base64);
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
 export async function ocrImage(
   file: File,
 ): Promise<{ text: string; extracted?: ExtractedLabelData }> {
   const { blob, mimeType } = await resizeImageForOcr(file);
-  const buffer = await blob.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  const base64 = btoa(binary);
+  const base64 = await blobToBase64(blob);
   const res = await fetch("/api/ocr", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

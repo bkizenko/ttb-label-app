@@ -80,13 +80,13 @@ export function Step1Upload({
               📸
             </span>
           )}
-          <span className="text-[22px] font-semibold text-[#1C1C1E]">
+          <span className="text-[28px] font-semibold text-[#1C1C1E]">
             {fileList.length
               ? `${fileList.length} label${fileList.length > 1 ? "s" : ""} selected`
               : "Select label images"}
           </span>
           <span
-            className="mt-2 text-[14px] text-[#8E8E93]"
+            className="mt-2 text-[17px] text-[#8E8E93]"
             style={{ opacity: 0.6 }}
           >
             {fileList.length

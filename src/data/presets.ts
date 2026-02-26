@@ -6,8 +6,8 @@ export interface DemoPreset {
   label: string;
   description: string;
   applicationData: ApplicationLabelData;
-  /** Path under /demo/ (e.g. "wine images/IMG_9944.HEIC") */
-  imagePath: string;
+  /** Paths under /demo/ — exactly 3 images per preset */
+  imagePaths: [string, string, string];
 }
 
 /** DAOU Cabernet Sauvignon — Wine (Domestic) */
@@ -15,7 +15,11 @@ const DAOU_PRESET: DemoPreset = {
   id: "daou",
   label: "DAOU Cabernet Sauvignon (Wine — Domestic)",
   description: "Wine, domestic",
-  imagePath: "wine images/IMG_9944.HEIC",
+  imagePaths: [
+    "wine images/IMG_9944.jpg",
+    "wine images/IMG_9945.jpg",
+    "wine images/IMG_9946.jpg",
+  ],
   applicationData: {
     brandName: "DAOU",
     classType: "Cabernet Sauvignon",
@@ -32,7 +36,11 @@ const STONES_THROW_PRESET: DemoPreset = {
   id: "stones-throw",
   label: "Stone's Throw IPA (Beer — Domestic)",
   description: "Beer, domestic",
-  imagePath: "stone's throw/Gemini_Generated_Image_m7k6thm7k6thm7k6.png",
+  imagePaths: [
+    "stone's throw/Gemini_Generated_Image_m7k6thm7k6thm7k6.jpg",
+    "stone's throw/Gemini_Generated_Image_dmzayfdmzayfdmza.jpg",
+    "stone's throw/Gemini_Generated_Image_zq0e3zq0e3zq0e3z.jpg",
+  ],
   applicationData: {
     brandName: "STONE'S THROW",
     classType: "India Pale Ale",
@@ -49,7 +57,11 @@ const ABSOLUT_PRESET: DemoPreset = {
   id: "absolut",
   label: "Absolut Citron (Vodka — Import)",
   description: "Distilled spirits, import",
-  imagePath: "vodka images/IMG_9937.jpg",
+  imagePaths: [
+    "vodka images/IMG_9937.jpg",
+    "vodka images/IMG_9936.HEIC",
+    "vodka images/IMG_9935.HEIC",
+  ],
   applicationData: {
     brandName: "ABSOLUT CITRON",
     classType: "Lemon Flavored Vodka",
@@ -66,7 +78,11 @@ const OLD_TOM_PRESET: DemoPreset = {
   id: "old-tom",
   label: "Old Tom Distillery (Bourbon — Domestic)",
   description: "Bourbon whiskey, domestic",
-  imagePath: "old tom distillery test images/ChatGPT Image Feb 25, 2026, 03_00_25 PM.png",
+  imagePaths: [
+    "old tom distillery test images/ChatGPT Image Feb 25, 2026, 03_00_25 PM.jpg",
+    "old tom distillery test images/ChatGPT Image Feb 25, 2026, 03_05_35 PM.jpg",
+    "old tom distillery test images/ChatGPT Image Feb 25, 2026, 03_07_36 PM.jpg",
+  ],
   applicationData: {
     brandName: "OLD TOM DISTILLERY",
     classType: "Kentucky Straight Bourbon Whiskey",
@@ -79,9 +95,9 @@ const OLD_TOM_PRESET: DemoPreset = {
 };
 
 export const DEMO_PRESETS: DemoPreset[] = [
+  ABSOLUT_PRESET,
   DAOU_PRESET,
   STONES_THROW_PRESET,
-  ABSOLUT_PRESET,
   OLD_TOM_PRESET,
 ];
 

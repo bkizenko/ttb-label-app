@@ -216,13 +216,17 @@ export default function Home() {
     const preset = selectedDemoPresetId ? getPresetById(selectedDemoPresetId) : null;
     if (!preset) return;
     try {
-      const url = demoImageUrl(preset.imagePath);
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("Demo image not found");
-      const blob = await res.blob();
-      const fileName = preset.imagePath.split("/").pop() ?? "demo.png";
-      const file = new File([blob], fileName, { type: blob.type || "image/png" });
-      setFileList([file]);
+      const files: File[] = [];
+      for (let i = 0; i < preset.imagePaths.length; i++) {
+        const path = preset.imagePaths[i];
+        const url = demoImageUrl(path);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Demo image not found: ${path}`);
+        const blob = await res.blob();
+        const fileName = path.split("/").pop() ?? `demo-${i + 1}.png`;
+        files.push(new File([blob], fileName, { type: blob.type || "image/png" }));
+      }
+      setFileList(files);
       setApplicationData({ ...preset.applicationData });
       setError(null);
       setDemoPickerOpen(false);
@@ -505,6 +509,13 @@ export default function Home() {
                 onSelectLabel={(i) => {
                   setCurrentResultIndex(i);
                   setBatchTab("detail");
+                  const result = results[i];
+                  const hasFieldsToReview =
+                    result?.checks?.some(
+                      (c) => c.status === "mismatch" || c.status === "missing",
+                    ) ?? false;
+                  setReviewMode(hasFieldsToReview ? "reviewing" : "summary");
+                  setCurrentReviewIndex(0);
                 }}
               />
             ) : !hasResults || !activeResult ? (
@@ -607,17 +618,20 @@ export default function Home() {
                         matchCount={matchCount}
                         checks={activeResult.checks}
                         onStartReview={() => setReviewMode("reviewing")}
+                        onViewBatchSummary={() => setBatchTab("summary")}
                         onCheckAnother={resetWizard}
                         currentIndex={safeIndex}
                         totalLabels={results.length}
-                        onPrev={() =>
-                          setCurrentResultIndex((i) => Math.max(0, i - 1))
-                        }
-                        onNext={() =>
+                        onPrev={() => {
+                          setCurrentResultIndex((i) => Math.max(0, i - 1));
+                          setCurrentReviewIndex(0);
+                        }}
+                        onNext={() => {
                           setCurrentResultIndex((i) =>
                             Math.min(results.length - 1, i + 1),
-                          )
-                        }
+                          );
+                          setCurrentReviewIndex(0);
+                        }}
                       />
                     );
                   }
@@ -629,6 +643,7 @@ export default function Home() {
                         if (safeIndex + 1 < results.length) {
                           setReviewMode("summary");
                           setCurrentResultIndex(safeIndex + 1);
+                          setCurrentReviewIndex(0);
                         } else {
                           setReviewMode("complete");
                         }
@@ -671,14 +686,16 @@ export default function Home() {
                           <LabelNav
                             currentIndex={safeIndex}
                             total={results.length}
-                            onPrev={() =>
-                              setCurrentResultIndex((i) => Math.max(0, i - 1))
-                            }
-                            onNext={() =>
+                            onPrev={() => {
+                              setCurrentResultIndex((i) => Math.max(0, i - 1));
+                              setCurrentReviewIndex(0);
+                            }}
+                            onNext={() => {
                               setCurrentResultIndex((i) =>
                                 Math.min(results.length - 1, i + 1),
-                              )
-                            }
+                              );
+                              setCurrentReviewIndex(0);
+                            }}
                           />
                         ) : null}
                       </>
@@ -722,6 +739,10 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => {
+                    if (batchTab === "summary") {
+                      resetWizard();
+                      return;
+                    }
                     const allLabelsReviewed =
                       results.length > 0 &&
                       results.every(

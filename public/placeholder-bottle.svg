@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 120" fill="none" aria-hidden="true">
+  <!-- Apple-style grayed-out bottle silhouette -->
+  <path d="M26 4h12v12H26V4z" stroke="#C7C7CC" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+  <path d="M24 16h16v8H24v-8z" stroke="#C7C7CC" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+  <path d="M20 24h24v76H20V24z" stroke="#C7C7CC" stroke-width="1.5" fill="#F2F2F7" stroke-linejoin="round"/>
+</svg>

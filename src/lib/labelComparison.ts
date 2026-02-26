@@ -363,6 +363,14 @@ export const compareLabelData = (
           notes: "Not clearly found on label",
         });
       }
+    } else if (isDomesticCountry(expectedRaw) && isDomesticCountry(actualRaw)) {
+      checks.push({
+        field: "countryOfOrigin",
+        status: "match",
+        expected: expectedRaw,
+        actual: actualRaw,
+        notes: "Domestic variant (e.g. USA / United States) matches.",
+      });
     } else {
       pushFuzzyCheck(checks, "countryOfOrigin", expected, actual, 90);
     }

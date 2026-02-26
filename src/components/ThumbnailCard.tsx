@@ -13,8 +13,10 @@ export function ThumbnailCard({
 }) {
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
   const [url, setUrl] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
+    setLoadError(false);
     const objectUrl = URL.createObjectURL(file);
     setUrl(objectUrl);
     return () => URL.revokeObjectURL(objectUrl);
@@ -51,7 +53,7 @@ export function ThumbnailCard({
       </button>
 
       <div className="overflow-hidden rounded-[12px]">
-        {url ? (
+        {url && !loadError ? (
           <img
             src={url}
             alt={file.name}
@@ -60,9 +62,12 @@ export function ThumbnailCard({
               const img = e.currentTarget;
               setDims({ w: img.naturalWidth, h: img.naturalHeight });
             }}
+            onError={() => setLoadError(true)}
           />
         ) : (
-          <div className="h-[140px] w-full rounded-[12px] bg-[#FAFBFC]" />
+          <div className="flex h-[140px] w-full items-center justify-center rounded-[12px] bg-[#F2F2F7] p-2">
+            <img src="/placeholder-preview.png" alt="" className="h-full w-full max-h-[120px] max-w-full object-contain opacity-70" aria-hidden />
+          </div>
         )}
       </div>
       <figcaption className="truncate text-[16px] font-medium text-[#1C1C1E]">

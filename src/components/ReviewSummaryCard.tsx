@@ -8,6 +8,7 @@ export interface ReviewSummaryCardProps {
   matchCount: number;
   checks: FieldCheck[];
   onStartReview: () => void;
+  onViewBatchSummary: () => void;
   onCheckAnother: () => void;
   currentIndex: number;
   totalLabels: number;
@@ -21,6 +22,7 @@ export function ReviewSummaryCard({
   matchCount,
   checks,
   onStartReview,
+  onViewBatchSummary,
   onCheckAnother,
   currentIndex,
   totalLabels,
@@ -135,10 +137,10 @@ export function ReviewSummaryCard({
             >
               Start Review
             </button>
-          ) : (
+          ) : currentIndex >= totalLabels - 1 ? (
             <button
               type="button"
-              onClick={onCheckAnother}
+              onClick={onViewBatchSummary}
               className="flex min-h-[56px] w-full items-center justify-center rounded-[24px] px-6 py-4 text-[17px] font-semibold text-white transition-transform duration-150 active:scale-[0.97]"
               style={{
                 background:
@@ -146,7 +148,20 @@ export function ReviewSummaryCard({
                 boxShadow: "0 4px 12px rgba(0, 122, 255, 0.25)",
               }}
             >
-              Check Another Label
+              View batch summary
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onNext}
+              className="flex min-h-[56px] w-full items-center justify-center rounded-[24px] px-6 py-4 text-[17px] font-semibold text-white transition-transform duration-150 active:scale-[0.97]"
+              style={{
+                background:
+                  "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
+                boxShadow: "0 4px 12px rgba(0, 122, 255, 0.25)",
+              }}
+            >
+              Next label
             </button>
           )}
         </div>

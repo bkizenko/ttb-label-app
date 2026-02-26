@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import type { ApplicationLabelData } from "@/lib/labelComparison";
-import { DEMO_PRESETS } from "@/data/presets";
 
 export interface Step2AppDataProps {
   applicationData: ApplicationLabelData;
@@ -25,12 +24,15 @@ export function Step2AppData({
 }: Step2AppDataProps) {
   const firstFile = fileList[0];
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState(false);
 
   useEffect(() => {
     if (!firstFile) {
       setPreviewUrl(null);
+      setPreviewError(false);
       return;
     }
+    setPreviewError(false);
     const url = URL.createObjectURL(firstFile);
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
@@ -49,14 +51,17 @@ export function Step2AppData({
           className="step2-preview-in flex h-[88px] items-center gap-4 rounded-[20px] bg-white px-4 depth-1"
           style={{ minHeight: "88px" }}
         >
-          {previewUrl ? (
+          {previewUrl && !previewError ? (
             <img
               src={previewUrl}
               alt=""
               className="h-[72px] w-[72px] shrink-0 rounded-[16px] bg-[#F2F2F7] object-contain"
+              onError={() => setPreviewError(true)}
             />
           ) : (
-            <div className="h-[72px] w-[72px] shrink-0 rounded-[16px] bg-[#F2F2F7]" />
+            <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-[16px] bg-[#F2F2F7] p-1.5">
+              <img src="/placeholder-preview.png" alt="" className="h-full w-full object-contain opacity-70" aria-hidden />
+            </div>
           )}
           <div className="min-w-0 flex-1">
             <p className="text-[14px] font-normal text-[#8E8E93]">
@@ -89,38 +94,10 @@ export function Step2AppData({
             Application record
           </p>
 
-          <div className="step2-field-in flex flex-wrap items-center gap-3">
-            <label
-              htmlFor="preset-select"
-              className="text-[14px] font-medium text-[#8E8E93]"
-            >
-              Load test preset:
-            </label>
-            <select
-              id="preset-select"
-              value=""
-              onChange={(e) => {
-                const id = e.target.value;
-                if (!id) return;
-                const preset = DEMO_PRESETS.find((p) => p.id === id);
-                if (preset) setApplicationData({ ...preset.applicationData });
-                e.target.value = "";
-              }}
-              className="rounded-[12px] border border-[#E5E5EA] bg-white px-4 py-2.5 text-[15px] text-[#1C1C1E] focus:outline-none focus:ring-2 focus:ring-[#007AFF]"
-            >
-              <option value="">Choose…</option>
-              {DEMO_PRESETS.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
           <div className="step2-field-in" style={{ animationDelay: "0ms" }}>
             <label
               htmlFor="brand-name"
-              className="mb-1.5 block text-[14px] font-medium text-[#8E8E93]"
+              className="mb-1.5 block text-[17px] font-medium text-[#1C1C1E]"
             >
               Brand name
             </label>
@@ -148,7 +125,7 @@ export function Step2AppData({
                 </span>
               ) : null}
             </div>
-            <p className="mt-1 text-[14px] text-[#8E8E93]" style={{ opacity: 0.6 }}>
+            <p className="mt-1 text-[15px] text-[#8E8E93]" style={{ opacity: 0.6 }}>
               Primary brand name on the approved application
             </p>
           </div>
@@ -156,7 +133,7 @@ export function Step2AppData({
           <div className="step2-field-in space-y-1.5">
             <label
               htmlFor="class-type"
-              className="block text-[14px] font-medium text-[#8E8E93]"
+              className="block text-[17px] font-medium text-[#1C1C1E]"
             >
               Class / type
             </label>
@@ -177,7 +154,7 @@ export function Step2AppData({
             <div className="space-y-1.5">
               <label
                 htmlFor="alcohol"
-                className="block text-[14px] font-medium text-[#8E8E93]"
+                className="block text-[17px] font-medium text-[#1C1C1E]"
               >
                 Alcohol content
               </label>
@@ -195,14 +172,14 @@ export function Step2AppData({
                 className="input-apple h-14 w-full rounded-[16px] border border-[#E5E5EA] bg-white px-4 text-[16px] text-[#1C1C1E] placeholder:opacity-60"
                 style={{ minHeight: "56px" }}
               />
-              <p className="mt-1 text-[12px] text-[#8E8E93]">
+              <p className="mt-1 text-[14px] text-[#8E8E93]">
                 Optional for some wine/beer types
               </p>
             </div>
             <div className="space-y-1.5">
               <label
                 htmlFor="net-contents"
-                className="block text-[14px] font-medium text-[#8E8E93]"
+                className="block text-[17px] font-medium text-[#1C1C1E]"
               >
                 Net contents
               </label>
@@ -226,7 +203,7 @@ export function Step2AppData({
           <div className="step2-field-in space-y-1.5">
             <label
               htmlFor="bottler-name-address"
-              className="block text-[14px] font-medium text-[#8E8E93]"
+              className="block text-[17px] font-medium text-[#1C1C1E]"
             >
               Bottler/Producer name & address
             </label>
@@ -249,7 +226,7 @@ export function Step2AppData({
           <div className="step2-field-in space-y-1.5">
             <label
               htmlFor="country-of-origin"
-              className="block text-[14px] font-medium text-[#8E8E93]"
+              className="block text-[17px] font-medium text-[#1C1C1E]"
             >
               Country of origin
             </label>
@@ -272,7 +249,7 @@ export function Step2AppData({
           <div className="step2-field-in space-y-1.5">
             <label
               htmlFor="government-warning"
-              className="block text-[14px] font-medium text-[#8E8E93]"
+              className="block text-[17px] font-medium text-[#1C1C1E]"
             >
               Government health warning
             </label>
@@ -289,7 +266,7 @@ export function Step2AppData({
               className="input-apple w-full resize-y rounded-[16px] border border-[#E5E5EA] bg-white px-4 py-3 text-[16px] leading-relaxed text-[#1C1C1E] placeholder:opacity-60"
               style={{ lineHeight: 1.6 }}
             />
-            <p className="mt-1 text-[12px] text-[#8E8E93]">
+            <p className="mt-1 text-[14px] text-[#8E8E93]">
               Standard TTB warning (pre-filled)
             </p>
           </div>

@@ -33,13 +33,16 @@ export function ReviewFieldCard({
 }: ReviewFieldCardProps) {
   const fieldLabel = FIELD_LABEL_MAP[check.field] ?? check.field;
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState(false);
   const [imageZoomOpen, setImageZoomOpen] = useState(false);
 
   useEffect(() => {
     if (!previewFile) {
       setPreviewUrl(null);
+      setPreviewError(false);
       return;
     }
+    setPreviewError(false);
     const url = URL.createObjectURL(previewFile);
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
@@ -51,7 +54,7 @@ export function ReviewFieldCard({
         className="rounded-[24px] bg-white p-8"
         style={{ boxShadow: "0 4px 16px rgba(0,0,0,0.06)" }}
       >
-        {previewUrl ? (
+        {previewUrl && !previewError ? (
           <button
             type="button"
             onClick={() => setImageZoomOpen(true)}
@@ -63,13 +66,16 @@ export function ReviewFieldCard({
               alt="Label"
               className="w-full rounded-[16px] object-contain"
               style={{ maxHeight: "400px" }}
+              onError={() => setPreviewError(true)}
             />
           </button>
         ) : (
           <div
-            className="mb-6 w-full rounded-[16px] bg-[#F5F5F7]"
-            style={{ height: "200px" }}
-          />
+            className="mb-6 flex w-full items-center justify-center rounded-[16px] bg-[#F5F5F7] p-8"
+            style={{ minHeight: "200px" }}
+          >
+            <img src="/placeholder-preview.png" alt="" className="max-h-[160px] max-w-full object-contain opacity-70" aria-hidden />
+          </div>
         )}
 
         {check.field === "governmentWarning" && check.status === "missing" ? (
@@ -290,6 +296,7 @@ export function ReviewFieldCard({
             alt="Label (enlarged)"
             className="max-h-[90vh] max-w-full rounded-lg object-contain shadow-2xl"
             onClick={(e) => e.stopPropagation()}
+            onError={() => setImageZoomOpen(false)}
           />
         </div>
       )}

@@ -22,11 +22,14 @@ export function OcrFailedCard({
   onSkip,
 }: OcrFailedCardProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState(false);
   useEffect(() => {
     if (!previewFile) {
       setPreviewUrl(null);
+      setPreviewError(false);
       return;
     }
+    setPreviewError(false);
     const url = URL.createObjectURL(previewFile);
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
@@ -59,15 +62,20 @@ export function OcrFailedCard({
             </p>
           </div>
         </div>
-        {previewUrl && (
+        {previewUrl && !previewError ? (
           <div className="flex justify-center">
             <img
               src={previewUrl}
               alt=""
               className="h-[120px] rounded-[16px] border border-[#E5E5EA] bg-white object-contain"
+              onError={() => setPreviewError(true)}
             />
           </div>
-        )}
+        ) : previewFile ? (
+          <div className="flex items-center justify-center rounded-[16px] border border-[#E5E5EA] bg-[#F2F2F7] p-6">
+            <img src="/placeholder-preview.png" alt="" className="max-h-[100px] max-w-full object-contain opacity-70" aria-hidden />
+          </div>
+        ) : null}
         <div className="flex flex-col gap-3">
           <button
             type="button"
