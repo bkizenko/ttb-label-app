@@ -33,6 +33,7 @@ export function ReviewFieldCard({
 }: ReviewFieldCardProps) {
   const fieldLabel = FIELD_LABEL_MAP[check.field] ?? check.field;
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [imageZoomOpen, setImageZoomOpen] = useState(false);
 
   useEffect(() => {
     if (!previewFile) {
@@ -51,12 +52,19 @@ export function ReviewFieldCard({
         style={{ boxShadow: "0 4px 16px rgba(0,0,0,0.06)" }}
       >
         {previewUrl ? (
-          <img
-            src={previewUrl}
-            alt=""
-            className="mb-6 w-full rounded-[16px] bg-[#F5F5F7] object-contain"
-            style={{ maxHeight: "400px" }}
-          />
+          <button
+            type="button"
+            onClick={() => setImageZoomOpen(true)}
+            className="mb-6 block w-full cursor-zoom-in rounded-[16px] bg-[#F5F5F7] text-left focus:outline-none focus:ring-2 focus:ring-[#007AFF] focus:ring-offset-2"
+            aria-label="Enlarge image"
+          >
+            <img
+              src={previewUrl}
+              alt="Label"
+              className="w-full rounded-[16px] object-contain"
+              style={{ maxHeight: "400px" }}
+            />
+          </button>
         ) : (
           <div
             className="mb-6 w-full rounded-[16px] bg-[#F5F5F7]"
@@ -257,6 +265,34 @@ export function ReviewFieldCard({
           </>
         )}
       </div>
+
+      {imageZoomOpen && previewUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Enlarged label image"
+          onClick={() => setImageZoomOpen(false)}
+        >
+          <button
+            type="button"
+            onClick={() => setImageZoomOpen(false)}
+            className="absolute right-4 top-4 rounded-full bg-white/90 p-2 text-[#3C3C43] hover:bg-white focus:outline-none focus:ring-2 focus:ring-white"
+            aria-label="Close"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+          <img
+            src={previewUrl}
+            alt="Label (enlarged)"
+            className="max-h-[90vh] max-w-full rounded-lg object-contain shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </section>
   );
 }

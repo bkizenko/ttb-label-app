@@ -82,6 +82,7 @@ export default function Home() {
     processingTotal,
     processingPreviewUrl,
     processingFieldLabel,
+    batchElapsedMs,
     runVerification,
     runSingleImageVerification,
   } = useVerification({
@@ -448,6 +449,7 @@ export default function Home() {
               <BatchSummaryTab
                 results={results}
                 perLabelReviewState={perLabelReviewState}
+                batchElapsedMs={batchElapsedMs}
                 onSelectLabel={(i) => {
                   setCurrentResultIndex(i);
                   setBatchTab("detail");
@@ -524,6 +526,26 @@ export default function Home() {
                     totalReviewCount > 0 &&
                     currentReviewIndex >= totalReviewCount - 1;
 
+                  /* ——— Just finished last label: show only "View batch summary" button ——— */
+                  if (reviewMode === "complete") {
+                    return (
+                      <div className="flex flex-col items-center gap-4 py-6">
+                        <button
+                          type="button"
+                          onClick={() => setBatchTab("summary")}
+                          className="inline-flex min-h-[56px] w-full max-w-[320px] items-center justify-center rounded-[12px] px-6 py-4 text-[17px] font-semibold text-white transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                          style={{
+                            background:
+                              "linear-gradient(180deg, #007AFF 0%, #0051D5 100%)",
+                            boxShadow: "0 4px 12px rgba(0, 122, 255, 0.25)",
+                          }}
+                        >
+                          View batch summary
+                        </button>
+                      </div>
+                    );
+                  }
+
                   /* ——— SUMMARY: one card + one CTA ——— */
                   if (reviewMode === "summary") {
                     return (
@@ -552,11 +574,11 @@ export default function Home() {
                   if (reviewMode === "reviewing" && currentCheck) {
                     const goNext = () => {
                       if (isLastField) {
-                        setReviewMode("summary");
                         if (safeIndex + 1 < results.length) {
+                          setReviewMode("summary");
                           setCurrentResultIndex(safeIndex + 1);
                         } else {
-                          setBatchTab("summary");
+                          setReviewMode("complete");
                         }
                       } else {
                         setCurrentReviewIndex((i) => i + 1);

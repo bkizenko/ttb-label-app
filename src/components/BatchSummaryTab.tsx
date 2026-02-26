@@ -30,12 +30,15 @@ const SUMMARY_FIELD_LABELS: Record<string, string> = {
 export interface BatchSummaryTabProps {
   results: VerificationResult[];
   perLabelReviewState: RefObject<Record<number, PerLabelReviewState>>;
+  /** Wall-clock time from batch start to batch complete (ms). When set, used for "Total time" instead of sum of per-label OCR times. */
+  batchElapsedMs?: number;
   onSelectLabel: (index: number) => void;
 }
 
 export function BatchSummaryTab({
   results,
   perLabelReviewState,
+  batchElapsedMs = 0,
   onSelectLabel,
 }: BatchSummaryTabProps) {
   const passedCount = results.filter(
@@ -46,11 +49,12 @@ export function BatchSummaryTab({
   ).length;
   const ocrFailedCount = results.filter((r) => r.status === "ocr_failed").length;
   const successResults = results.filter((r) => r.status === "success");
-  const totalMs = successResults.reduce(
+  const sumOcrMs = successResults.reduce(
     (sum, r) => sum + (r.durationMs ?? 0),
     0,
   );
-  const avgMs = totalMs / Math.max(1, successResults.length);
+  const avgMs = sumOcrMs / Math.max(1, successResults.length);
+  const totalMs = batchElapsedMs > 0 ? batchElapsedMs : sumOcrMs;
   const totalSec = totalMs / 1000;
   const totalTimeStr =
     totalSec >= 60

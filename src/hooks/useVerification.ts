@@ -33,6 +33,7 @@ export function useVerification({
   const [processingPreviewUrl, setProcessingPreviewUrl] = useState<string | null>(null);
   const [processingFieldLabel, setProcessingFieldLabel] = useState("");
   const [batchStartTime, setBatchStartTime] = useState(0);
+  const [batchEndTime, setBatchEndTime] = useState(0);
 
   useEffect(() => {
     if (isProcessing && fileList.length > 0) {
@@ -85,6 +86,7 @@ export function useVerification({
       setResults([]);
       setProcessingTotal(files.length);
       setProcessingCurrent(0);
+      setBatchEndTime(0);
       setBatchStartTime(performance.now());
       onRunStart?.();
 
@@ -145,6 +147,7 @@ export function useVerification({
           newResults.push(...batchResults);
           setResults([...newResults]);
         }
+        setBatchEndTime(performance.now());
         onRunComplete?.();
       } catch {
         onCatastrophicError?.(
@@ -198,6 +201,9 @@ export function useVerification({
     [fileList, applicationData, onSingleImageStart, onSingleImageEnd],
   );
 
+  const batchElapsedMs =
+    batchStartTime > 0 && batchEndTime > 0 ? batchEndTime - batchStartTime : 0;
+
   return {
     results,
     setResults,
@@ -207,6 +213,8 @@ export function useVerification({
     processingPreviewUrl,
     processingFieldLabel,
     batchStartTime,
+    batchEndTime,
+    batchElapsedMs,
     runVerification,
     runSingleImageVerification,
   };
