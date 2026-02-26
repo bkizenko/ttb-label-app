@@ -27,6 +27,7 @@ import {
   type Mode,
   type VerificationResult,
 } from "@/lib/types";
+import { DEMO_PRESETS } from "@/data/presets";
 
 export default function Home() {
   const [mode, setMode] = useState<Mode>("single");
@@ -46,6 +47,7 @@ export default function Home() {
     null,
   );
   const replaceFileInputRef = useRef<HTMLInputElement>(null);
+  const runDemoOnStep2Ref = useRef(false);
 
   const {
     reviewMode,
@@ -198,6 +200,24 @@ export default function Home() {
     void runVerification(fileList, [normalizeApplicationDataForDomestic(applicationData)]);
   };
 
+  const handleStartDemo = useCallback(async () => {
+    const preset = DEMO_PRESETS[0];
+    if (!preset) return;
+    try {
+      const res = await fetch(`/demo/${preset.imagePath}`);
+      if (!res.ok) throw new Error("Demo image not found");
+      const blob = await res.blob();
+      const file = new File([blob], preset.imagePath, { type: blob.type || "image/png" });
+      setFileList([file]);
+      setApplicationData({ ...preset.applicationData });
+      setError(null);
+      runDemoOnStep2Ref.current = true;
+      setStep(2);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load demo. Add images to public/demo/.");
+    }
+  }, []);
+
   const skipLabelAtResultIndex = useCallback((resultIndex: number) => {
     setResults((prev) => prev.filter((_, i) => i !== resultIndex));
     setFileList((prev) => prev.filter((_, i) => i !== resultIndex));
@@ -253,6 +273,14 @@ export default function Home() {
     onNextLabel: () =>
       setCurrentResultIndex((i) => Math.min(results.length - 1, i + 1)),
   });
+
+  /* Auto-run verification when demo mode just loaded Step 2 */
+  useEffect(() => {
+    if (step === 2 && runDemoOnStep2Ref.current) {
+      runDemoOnStep2Ref.current = false;
+      handleRunWizard();
+    }
+  }, [step, handleRunWizard]);
 
   /* Collapse gov warning when moving between fields */
   useEffect(() => {
@@ -327,6 +355,7 @@ export default function Home() {
             onRemoveFile={removeSelectedFile}
             onClearAll={clearAllFiles}
             onNext={() => setStep(2)}
+            onStartDemo={handleStartDemo}
           />
         </div>
       </div>

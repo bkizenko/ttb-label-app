@@ -10,6 +10,8 @@ export interface Step1UploadProps {
   onRemoveFile: (key: string) => void;
   onClearAll: () => void;
   onNext: () => void;
+  /** Load preset image + application data and go to Step 2, then auto-run verification (demo mode). */
+  onStartDemo?: () => void;
 }
 
 export function Step1Upload({
@@ -20,6 +22,7 @@ export function Step1Upload({
   onRemoveFile,
   onClearAll,
   onNext,
+  onStartDemo,
 }: Step1UploadProps) {
   return (
     <main className="flex flex-col gap-10">
@@ -126,7 +129,16 @@ export function Step1Upload({
         ) : null}
       </section>
 
-      <div className="w-full sm:flex sm:justify-end">
+      <div className="flex w-full flex-col items-center gap-4 sm:flex-row sm:justify-end">
+        {onStartDemo ? (
+          <button
+            type="button"
+            onClick={onStartDemo}
+            className="w-full min-h-[48px] rounded-[16px] border-2 border-[#E5E5EA] bg-white px-6 py-3 text-[15px] font-semibold text-[#1C1C1E] transition-all duration-200 hover:border-[#007AFF] hover:bg-[#F0F7FF] hover:text-[#007AFF] active:scale-[0.98] sm:w-auto"
+          >
+            Not sure where to start?
+          </button>
+        ) : null}
         <button
           type="button"
           disabled={!fileList.length}
