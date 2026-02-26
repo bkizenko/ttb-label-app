@@ -7,6 +7,7 @@ import {
   type ApplicationLabelData,
   type FieldCheck,
 } from "@/lib/labelComparison";
+import { useReviewState } from "@/hooks/useReviewState";
 import { useVerification } from "@/hooks/useVerification";
 import {
   defaultApplicationData,
@@ -105,18 +106,25 @@ export default function Home() {
   const [catastrophicError, setCatastrophicError] = useState<string | null>(
     null,
   );
-  const [reviewMode, setReviewMode] = useState<
-    "summary" | "reviewing" | "complete"
-  >("summary");
-  const [currentReviewIndex, setCurrentReviewIndex] = useState(0);
-  const [manualOverrides, setManualOverrides] = useState<
-    Record<string, string>
-  >({});
-  const [flaggedFields, setFlaggedFields] = useState<Set<string>>(new Set());
-  const perLabelReviewState = useRef<
-    Record<number, { reviewMode: "summary" | "reviewing" | "complete"; currentReviewIndex: number; manualOverrides: Record<string, string>; flaggedFields: Set<string> }>
-  >({});
   const replaceFileInputRef = useRef<HTMLInputElement>(null);
+
+  const {
+    reviewMode,
+    setReviewMode,
+    currentReviewIndex,
+    setCurrentReviewIndex,
+    manualOverrides,
+    setManualOverrides,
+    flaggedFields,
+    setFlaggedFields,
+    perLabelReviewState,
+  } = useReviewState({
+    currentResultIndex,
+    onLabelChange: () => {
+      setGovWarningExpanded(false);
+      setConfirmingReset(false);
+    },
+  });
   const [replacingResultIndex, setReplacingResultIndex] = useState<
     number | null
   >(null);
@@ -332,35 +340,6 @@ export default function Home() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [step, isProcessing, fileList.length, results.length]);
-
-  /* Save/restore per-label review state when switching labels */
-  const prevResultIndex = useRef(currentResultIndex);
-  useEffect(() => {
-    const prev = prevResultIndex.current;
-    if (prev !== currentResultIndex) {
-      perLabelReviewState.current[prev] = {
-        reviewMode,
-        currentReviewIndex,
-        manualOverrides,
-        flaggedFields,
-      };
-      const saved = perLabelReviewState.current[currentResultIndex];
-      if (saved) {
-        setReviewMode(saved.reviewMode);
-        setCurrentReviewIndex(saved.currentReviewIndex);
-        setManualOverrides(saved.manualOverrides);
-        setFlaggedFields(saved.flaggedFields);
-      } else {
-        setReviewMode("summary");
-        setCurrentReviewIndex(0);
-        setManualOverrides({});
-        setFlaggedFields(new Set());
-      }
-      setGovWarningExpanded(false);
-      setConfirmingReset(false);
-      prevResultIndex.current = currentResultIndex;
-    }
-  }, [currentResultIndex, reviewMode, currentReviewIndex, manualOverrides, flaggedFields]);
 
   /* Collapse gov warning when moving between fields */
   useEffect(() => {
