@@ -83,8 +83,8 @@ export function Step2AppData({
 
       {demoBannerVisible && onDismissDemoBanner ? (
         <div
-          className="flex items-center gap-3 rounded-[10px] border border-[#E6D68A] px-4 py-3"
-          style={{ backgroundColor: "#FFF3CD" }}
+          className="flex items-center gap-3 rounded-[10px] border-0 border-l-[3px] border-l-[#007AFF] px-4 py-3"
+          style={{ backgroundColor: "#F2F2F7" }}
           role="status"
           aria-live="polite"
         >
