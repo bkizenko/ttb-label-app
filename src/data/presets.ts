@@ -59,8 +59,8 @@ const ABSOLUT_PRESET: DemoPreset = {
   description: "Distilled spirits, import",
   imagePaths: [
     "vodka images/IMG_9937.jpg",
-    "vodka images/IMG_9936.HEIC",
-    "vodka images/IMG_9935.HEIC",
+    "vodka images/IMG_9917.png",
+    "vodka images/IMG_9932.jpg",
   ],
   applicationData: {
     brandName: "ABSOLUT CITRON",
