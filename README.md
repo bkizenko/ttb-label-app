@@ -76,9 +76,16 @@ Demo presets in `src/data/presets.ts` reference a subset of these. To list all f
 
 ## Limitations
 
-- **Prototype only**: Nothing is saved to a server; data stays in your browser.
-- **OCR**: Very blurry, skewed, or tiny text may be misread. The app will flag uncertain cases for you to review.
-- **Government warning**: The app checks that the required warning text is present and that “GOVERNMENT WARNING:” is in all caps and bold when the OCR can determine it; otherwise it asks for manual review.
+- **No persistence** — Prototype only; nothing is saved server-side. Data stays in your browser for the session.
+- **No COLA integration** — Standalone proof-of-concept as specified; not wired to the TTB COLA system.
+- **Cold start** — During development we saw occasional timeouts on the first request after deploy (serverless cold start); retrying worked. This is no longer an issue in normal use.
+- **HEIC preview** — HEIC images cannot be rendered in this app (the image preview will not load in the browser). If extraction still runs, it may work in some environments (e.g. when the browser or API can decode HEIC); we recommend converting HEIC to PNG or JPEG for reliable preview and OCR.
+
+---
+
+## Trade-offs
+
+- **More explanatory text** — We added notes, hints, and field-level guidance (e.g. match percentages, TTB references) to support reviewers. That extra text may make the interface denser and slightly harder for less tech-savvy users; accommodating those users was a guiding principle of the project, so we kept the flow simple and the copy as plain as we could while still being accurate.
 
 ---
 
