@@ -30,7 +30,7 @@ export function ReviewSummaryCard({
   onNext,
 }: ReviewSummaryCardProps) {
   return (
-    <section className="mx-auto flex max-w-[600px] flex-col gap-8">
+    <section id="review-summary-card" className="mx-auto flex max-w-[600px] flex-col gap-8">
       <div
         className="animate-fade-scale-in flex min-h-[140px] flex-col justify-center rounded-[24px] p-8"
         style={{

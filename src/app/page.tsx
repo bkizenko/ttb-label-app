@@ -109,6 +109,12 @@ export default function Home() {
     onRunComplete: () => {
       setProgressMessage(null);
       setStep(3);
+      requestAnimationFrame(() => {
+        document.getElementById("review-summary-card")?.scrollIntoView({
+          behavior: "instant",
+          block: "center",
+        });
+      });
     },
     onCatastrophicError: setCatastrophicError,
     onValidationError: setError,
@@ -389,7 +395,10 @@ export default function Home() {
                 onFilesSelected={handleFilesSelected}
                 onRemoveFile={removeSelectedFile}
                 onClearAll={clearAllFiles}
-                onNext={() => setStep(2)}
+                onNext={() => {
+                  setStep(2);
+                  window.scrollTo({ top: 0, behavior: "instant" });
+                }}
               />
             </>
           )}
@@ -652,6 +661,12 @@ export default function Home() {
                             Math.min(results.length - 1, i + 1),
                           );
                           setCurrentReviewIndex(0);
+                          requestAnimationFrame(() => {
+                            document.getElementById("review-summary-card")?.scrollIntoView({
+                              behavior: "instant",
+                              block: "center",
+                            });
+                          });
                         }}
                       />
                     );
@@ -665,6 +680,12 @@ export default function Home() {
                           setReviewMode("summary");
                           setCurrentResultIndex(safeIndex + 1);
                           setCurrentReviewIndex(0);
+                          requestAnimationFrame(() => {
+                            document.getElementById("review-summary-card")?.scrollIntoView({
+                              behavior: "instant",
+                              block: "center",
+                            });
+                          });
                         } else {
                           setReviewMode("complete");
                         }

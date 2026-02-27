@@ -37,6 +37,12 @@ export function Step2AppData({
       setPreviewError(false);
       return;
     }
+    const isHeic = firstFile.name.toLowerCase().endsWith(".heic");
+    if (isHeic) {
+      setPreviewUrl(null);
+      setPreviewError(false);
+      return;
+    }
     setPreviewError(false);
     const url = URL.createObjectURL(firstFile);
     setPreviewUrl(url);
