@@ -11,6 +11,9 @@ export interface Step2AppDataProps {
   isProcessing: boolean;
   onBack: () => void;
   onSubmit: () => void;
+  /** When true, show a dismissible demo-mode banner between the label preview and the form. */
+  demoBannerVisible?: boolean;
+  onDismissDemoBanner?: () => void;
 }
 
 export function Step2AppData({
@@ -21,6 +24,8 @@ export function Step2AppData({
   isProcessing,
   onBack,
   onSubmit,
+  demoBannerVisible = false,
+  onDismissDemoBanner,
 }: Step2AppDataProps) {
   const firstFile = fileList[0];
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -74,6 +79,27 @@ export function Step2AppData({
             </p>
           </div>
         </section>
+      ) : null}
+
+      {demoBannerVisible && onDismissDemoBanner ? (
+        <div
+          className="flex items-center gap-3 rounded-[10px] border border-[#E6D68A] px-4 py-3"
+          style={{ backgroundColor: "#FFF3CD" }}
+          role="status"
+          aria-live="polite"
+        >
+          <p className="flex-1 text-[15px] font-medium text-[#1C1C1E]">
+            Demo mode — sample data pre-filled. This is not a real submission.
+          </p>
+          <button
+            type="button"
+            onClick={onDismissDemoBanner}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[17px] text-[#1C1C1E] hover:bg-black/8 active:bg-black/12"
+            aria-label="Dismiss demo banner"
+          >
+            ✕
+          </button>
+        </div>
       ) : null}
 
       <section

@@ -52,6 +52,8 @@ export default function Home() {
   const [selectedDemoPresetId, setSelectedDemoPresetId] = useState<string | null>(
     DEMO_PRESETS[0]?.id ?? null,
   );
+  const [demoLoadedFromPicker, setDemoLoadedFromPicker] = useState(false);
+  const [demoBannerDismissed, setDemoBannerDismissed] = useState(false);
 
   const {
     reviewMode,
@@ -117,6 +119,7 @@ export default function Home() {
   const handleFilesSelected = (files: FileList | null) => {
     if (!files) return;
     setError(null);
+    setDemoLoadedFromPicker(false);
     const allFiles = Array.from(files);
     const images = allFiles.filter((file) => file.type.startsWith("image/"));
     const hasUnsupported = allFiles.some(
@@ -230,6 +233,8 @@ export default function Home() {
       setApplicationData({ ...preset.applicationData });
       setError(null);
       setDemoPickerOpen(false);
+      setDemoLoadedFromPicker(true);
+      setDemoBannerDismissed(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load demo image.");
     }
@@ -274,6 +279,8 @@ export default function Home() {
     setPendingReplaceResultIndex(null);
     setBatchTab("detail");
     setConfirmingReset(false);
+    setDemoLoadedFromPicker(false);
+    setDemoBannerDismissed(false);
     setFlaggedFields(new Set());
   };
 
@@ -302,10 +309,12 @@ export default function Home() {
   /* Screen reader: announce step changes */
   const stepAnnouncement =
     step === 1
-      ? "Step 1 of 3: Upload label image"
+      ? "Step 1 of 4: Upload label image"
       : step === 2
-        ? "Step 2 of 3: Enter application data"
-        : "Step 3 of 3: Comparison results";
+        ? "Step 2 of 4: Enter application data"
+        : step === 3 && hasBatchSummary && isOnSummaryTab
+          ? "Step 4 of 4: Summary"
+          : "Step 3 of 4: Comparison results";
 
   if (step === 1) {
     return (
@@ -371,7 +380,7 @@ export default function Home() {
                 onClick={() => setDemoPickerOpen(true)}
                 className="w-full min-h-[48px] rounded-[16px] border-2 border-[#E5E5EA] bg-white px-6 py-3 text-[15px] font-semibold text-[#1C1C1E] transition-all duration-200 hover:border-[#007AFF] hover:bg-[#F0F7FF] hover:text-[#007AFF] active:scale-[0.98]"
               >
-                Not sure where to start?
+                Try a demo label
               </button>
               <Step1Upload
                 error={error}
@@ -428,6 +437,8 @@ export default function Home() {
             isProcessing={isProcessing}
             onBack={() => setStep(1)}
             onSubmit={handleRunWizard}
+            demoBannerVisible={demoLoadedFromPicker && !demoBannerDismissed}
+            onDismissDemoBanner={() => setDemoBannerDismissed(true)}
           />
         </div>
         {isProcessing && (

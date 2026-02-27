@@ -246,9 +246,6 @@ export function BatchSummaryTab({
           ? result.checks.filter((c) => c.status !== "match").length
           : 0;
         const icon = isFailed ? "❌" : hasIssues ? "⚠️" : "✅";
-        const durationStr = isSuccess
-          ? `${(result.durationMs / 1000).toFixed(1)}s`
-          : "";
         const statusText = isFailed
           ? "Could not read label"
           : hasIssues
@@ -268,7 +265,6 @@ export function BatchSummaryTab({
               </p>
               <p className="mt-0.5 text-[14px] text-[#8E8E93]">
                 {statusText}
-                {durationStr ? ` · ${durationStr}` : ""}
               </p>
             </div>
             <span className="text-[22px] font-light text-[#C7C7CC]">›</span>
