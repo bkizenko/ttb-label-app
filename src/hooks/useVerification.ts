@@ -108,6 +108,9 @@ export function useVerification({
           const batchResults = await Promise.all(
             batchItems.map(async ({ file, index, appData }) => {
               const start = performance.now();
+              // #region agent log
+              const _dbgLocal = typeof window !== "undefined" && (window.location?.hostname === "localhost" || window.location?.hostname === "127.0.0.1");
+              // #endregion
               try {
                 const timeoutMs = 60000;
                 const ocrPromise = ocrImage(file);
@@ -116,7 +119,7 @@ export function useVerification({
                 );
                 // #region agent log
                 console.log(`[DBG-BATCH] starting OCR for index=${index} file=${file.name}`);
-                fetch('http://127.0.0.1:7651/ingest/c0175708-cdcf-43ef-bb15-43fcf640f0c3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'76393b'},body:JSON.stringify({sessionId:'76393b',location:'useVerification.ts:batch-start',message:'batch OCR start',data:{index,fileName:file.name,timeoutMs},timestamp:Date.now(),hypothesisId:'H5'})}).catch(()=>{});
+                if (_dbgLocal) fetch('http://127.0.0.1:7651/ingest/c0175708-cdcf-43ef-bb15-43fcf640f0c3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'76393b'},body:JSON.stringify({sessionId:'76393b',location:'useVerification.ts:batch-start',message:'batch OCR start',data:{index,fileName:file.name,timeoutMs},timestamp:Date.now(),hypothesisId:'H5'})}).catch(()=>{});
                 // #endregion
                 const { text: ocrText, extracted: extractedFromApi } =
                   await Promise.race([ocrPromise, timeoutPromise]);
@@ -140,7 +143,7 @@ export function useVerification({
                 // #region agent log
                 const errMsg = err instanceof Error ? err.message : String(err);
                 console.error(`[DBG-BATCH] OCR failed index=${index} file=${file.name} error=${errMsg} elapsed=${(performance.now()-start).toFixed(0)}ms`);
-                fetch('http://127.0.0.1:7651/ingest/c0175708-cdcf-43ef-bb15-43fcf640f0c3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'76393b'},body:JSON.stringify({sessionId:'76393b',location:'useVerification.ts:batch-fail',message:'batch OCR failed',data:{index,fileName:file.name,error:errMsg,elapsedMs:performance.now()-start},timestamp:Date.now(),hypothesisId:'H1,H2,H5'})}).catch(()=>{});
+                if (_dbgLocal) fetch('http://127.0.0.1:7651/ingest/c0175708-cdcf-43ef-bb15-43fcf640f0c3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'76393b'},body:JSON.stringify({sessionId:'76393b',location:'useVerification.ts:batch-fail',message:'batch OCR failed',data:{index,fileName:file.name,error:errMsg,elapsedMs:performance.now()-start},timestamp:Date.now(),hypothesisId:'H1,H2,H5'})}).catch(()=>{});
                 // #endregion
                 batchCompleted++;
                 setProcessingCurrent(batchStart + batchCompleted);
