@@ -229,15 +229,33 @@ export async function ocrImage(
 ): Promise<{ text: string; extracted?: ExtractedLabelData }> {
   const { blob, mimeType } = await resizeImageForOcr(file);
   const base64 = await blobToBase64(blob);
+  // #region agent log
+  const _dbgFetchStart = performance.now();
+  fetch('http://127.0.0.1:7651/ingest/c0175708-cdcf-43ef-bb15-43fcf640f0c3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'76393b'},body:JSON.stringify({sessionId:'76393b',location:'ocrClient.ts:fetch-start',message:'OCR fetch starting',data:{mimeType,base64Length:base64.length,fileName:file.name},timestamp:Date.now()})}).catch(()=>{});
+  console.log(`[DBG] OCR fetch start file=${file.name} base64Len=${base64.length} mime=${mimeType}`);
+  // #endregion
   const res = await fetch("/api/ocr", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ imageBase64: base64, mimeType }),
   });
+  // #region agent log
+  const _dbgFetchMs = performance.now() - _dbgFetchStart;
+  // #endregion
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || res.statusText);
+    // #region agent log
+    const errBody = await res.text().catch(() => "");
+    console.error(`[DBG] OCR fetch FAILED status=${res.status} time=${_dbgFetchMs.toFixed(0)}ms body=${errBody} file=${file.name}`);
+    fetch('http://127.0.0.1:7651/ingest/c0175708-cdcf-43ef-bb15-43fcf640f0c3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'76393b'},body:JSON.stringify({sessionId:'76393b',location:'ocrClient.ts:fetch-fail',message:'OCR fetch failed',data:{status:res.status,fetchMs:_dbgFetchMs,errBody,fileName:file.name},timestamp:Date.now(),hypothesisId:'H1,H2,H3,H4'})}).catch(()=>{});
+    // #endregion
+    let errJson: Record<string, string> = {};
+    try { errJson = JSON.parse(errBody); } catch {}
+    throw new Error(errJson.error || res.statusText);
   }
+  // #region agent log
+  console.log(`[DBG] OCR fetch OK status=${res.status} time=${_dbgFetchMs.toFixed(0)}ms file=${file.name}`);
+  fetch('http://127.0.0.1:7651/ingest/c0175708-cdcf-43ef-bb15-43fcf640f0c3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'76393b'},body:JSON.stringify({sessionId:'76393b',location:'ocrClient.ts:fetch-ok',message:'OCR fetch succeeded',data:{status:res.status,fetchMs:_dbgFetchMs,fileName:file.name},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+  // #endregion
   const data = await res.json();
   const text = data.text ?? "";
   const extractedFromApi = data.extracted as ExtractedLabelData | undefined;

@@ -55,7 +55,7 @@ You should see the TTB Label Verification app. Use **“Not sure where to start?
 
 ## Test and demo images
 
-The repo includes test/demo images used by the **“Not sure where to start?”** flow. They are in **`public/demo/`**:
+The repo includes additional test/demo images used by the **“Not sure where to start?”** flow. They are in **`public/demo/`**:
 
 - **`public/demo/wine images/`** — Wine (DAOU) labels (JPG, HEIC)
 - **`public/demo/stone's throw/`** — Stone’s Throw IPA (PNG, JPG)
@@ -87,3 +87,12 @@ Demo presets in `src/data/presets.ts` reference a subset of these. To list all f
 - Next.js 16, React, TypeScript, Tailwind CSS
 - Google Gemini 2.5 Flash for OCR (server route)
 - Deployed at [https://ttb-label-app.vercel.app](https://ttb-label-app.vercel.app)
+
+### Deploying to Vercel
+
+Vercel does **not** use `.env.local`. To avoid 500 errors on `/api/ocr`, add the Gemini API key in the Vercel dashboard:
+
+1. Open your project on [vercel.com](https://vercel.com) → **Settings** → **Environment Variables**.
+2. Add **`GEMINI_API_KEY`** with your key (same value as in `.env.local`).
+3. Select **Production** (and **Preview** if you use preview deployments), then Save.
+4. **Redeploy** the project (Deployments → ⋮ on the latest → Redeploy) so the new variable is applied.

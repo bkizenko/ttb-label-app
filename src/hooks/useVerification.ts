@@ -109,11 +109,15 @@ export function useVerification({
             batchItems.map(async ({ file, index, appData }) => {
               const start = performance.now();
               try {
-                const timeoutMs = 30000;
+                const timeoutMs = 60000;
                 const ocrPromise = ocrImage(file);
                 const timeoutPromise = new Promise<never>((_, reject) =>
                   setTimeout(() => reject(new Error("OCR timeout")), timeoutMs),
                 );
+                // #region agent log
+                console.log(`[DBG-BATCH] starting OCR for index=${index} file=${file.name}`);
+                fetch('http://127.0.0.1:7651/ingest/c0175708-cdcf-43ef-bb15-43fcf640f0c3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'76393b'},body:JSON.stringify({sessionId:'76393b',location:'useVerification.ts:batch-start',message:'batch OCR start',data:{index,fileName:file.name,timeoutMs},timestamp:Date.now(),hypothesisId:'H5'})}).catch(()=>{});
+                // #endregion
                 const { text: ocrText, extracted: extractedFromApi } =
                   await Promise.race([ocrPromise, timeoutPromise]);
                 if (process.env.NODE_ENV === "development") {
@@ -132,7 +136,12 @@ export function useVerification({
                   rawOcrText: ocrText,
                   durationMs,
                 };
-              } catch {
+              } catch (err) {
+                // #region agent log
+                const errMsg = err instanceof Error ? err.message : String(err);
+                console.error(`[DBG-BATCH] OCR failed index=${index} file=${file.name} error=${errMsg} elapsed=${(performance.now()-start).toFixed(0)}ms`);
+                fetch('http://127.0.0.1:7651/ingest/c0175708-cdcf-43ef-bb15-43fcf640f0c3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'76393b'},body:JSON.stringify({sessionId:'76393b',location:'useVerification.ts:batch-fail',message:'batch OCR failed',data:{index,fileName:file.name,error:errMsg,elapsedMs:performance.now()-start},timestamp:Date.now(),hypothesisId:'H1,H2,H5'})}).catch(()=>{});
+                // #endregion
                 batchCompleted++;
                 setProcessingCurrent(batchStart + batchCompleted);
                 return {

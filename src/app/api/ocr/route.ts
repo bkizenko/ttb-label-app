@@ -27,11 +27,19 @@ Rules:
 - governmentWarningHeaderIsBold: true if the "GOVERNMENT WARNING" header appears visually bolder/heavier than the surrounding warning body text.
 - If government warning is not visible, set governmentWarningText to null and both booleans to false.`;
 
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   const t0 = Date.now();
+  // #region agent log
+  console.log("[DBG-ROUTE] handler entered", { hasKey: !!process.env.GEMINI_API_KEY, t0 });
+  // #endregion
   const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey) {
+    // #region agent log
+    console.error("[DBG-ROUTE] GEMINI_API_KEY missing!");
+    // #endregion
     return NextResponse.json(
       { error: "GEMINI_API_KEY is not configured" },
       { status: 500 },
@@ -142,6 +150,9 @@ export async function POST(req: NextRequest) {
   const tEnd = Date.now();
   console.log("[OCR] response parse", tEnd - parseStart, "ms");
   console.log("[OCR] total", tEnd - t0, "ms");
+  // #region agent log
+  console.log("[DBG-ROUTE] returning success", { totalMs: tEnd - t0 });
+  // #endregion
   return NextResponse.json({
     text: rawText,
     ...(extracted && { extracted }),

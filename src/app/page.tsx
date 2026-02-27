@@ -495,6 +495,15 @@ export default function Home() {
             if (firstFailedIndex >= 0) {
               setCurrentResultIndex(firstFailedIndex);
               setBatchTab("detail");
+              // Scroll the failed-label card into view after React re-renders
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                  document.getElementById("first-failed-label")?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                  });
+                });
+              });
             }
           }}
           error={error}
