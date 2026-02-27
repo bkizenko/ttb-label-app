@@ -95,9 +95,9 @@ const OLD_TOM_PRESET: DemoPreset = {
 };
 
 export const DEMO_PRESETS: DemoPreset[] = [
-  ABSOLUT_PRESET,
-  DAOU_PRESET,
   STONES_THROW_PRESET,
+  DAOU_PRESET,
+  ABSOLUT_PRESET,
   OLD_TOM_PRESET,
 ];
 

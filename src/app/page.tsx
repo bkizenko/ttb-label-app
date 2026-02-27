@@ -511,9 +511,10 @@ export default function Home() {
                   setBatchTab("detail");
                   const result = results[i];
                   const hasFieldsToReview =
-                    result?.checks?.some(
+                    result?.status === "success" &&
+                    result.checks.some(
                       (c) => c.status === "mismatch" || c.status === "missing",
-                    ) ?? false;
+                    );
                   setReviewMode(hasFieldsToReview ? "reviewing" : "summary");
                   setCurrentReviewIndex(0);
                 }}

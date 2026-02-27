@@ -97,7 +97,7 @@ export function Step2AppData({
           <div className="step2-field-in" style={{ animationDelay: "0ms" }}>
             <label
               htmlFor="brand-name"
-              className="mb-1.5 block text-[17px] font-medium text-[#1C1C1E]"
+              className="mb-1.5 block text-[17px] font-medium text-[#8E8E93]"
             >
               Brand name
             </label>
@@ -133,7 +133,7 @@ export function Step2AppData({
           <div className="step2-field-in space-y-1.5">
             <label
               htmlFor="class-type"
-              className="block text-[17px] font-medium text-[#1C1C1E]"
+              className="block text-[17px] font-medium text-[#8E8E93]"
             >
               Class / type
             </label>
@@ -154,7 +154,7 @@ export function Step2AppData({
             <div className="space-y-1.5">
               <label
                 htmlFor="alcohol"
-                className="block text-[17px] font-medium text-[#1C1C1E]"
+                className="block text-[17px] font-medium text-[#8E8E93]"
               >
                 Alcohol content
               </label>
@@ -179,7 +179,7 @@ export function Step2AppData({
             <div className="space-y-1.5">
               <label
                 htmlFor="net-contents"
-                className="block text-[17px] font-medium text-[#1C1C1E]"
+                className="block text-[17px] font-medium text-[#8E8E93]"
               >
                 Net contents
               </label>
@@ -203,7 +203,7 @@ export function Step2AppData({
           <div className="step2-field-in space-y-1.5">
             <label
               htmlFor="bottler-name-address"
-              className="block text-[17px] font-medium text-[#1C1C1E]"
+              className="block text-[17px] font-medium text-[#8E8E93]"
             >
               Bottler/Producer name & address
             </label>
@@ -226,7 +226,7 @@ export function Step2AppData({
           <div className="step2-field-in space-y-1.5">
             <label
               htmlFor="country-of-origin"
-              className="block text-[17px] font-medium text-[#1C1C1E]"
+              className="block text-[17px] font-medium text-[#8E8E93]"
             >
               Country of origin
             </label>
@@ -249,7 +249,7 @@ export function Step2AppData({
           <div className="step2-field-in space-y-1.5">
             <label
               htmlFor="government-warning"
-              className="block text-[17px] font-medium text-[#1C1C1E]"
+              className="block text-[17px] font-medium text-[#8E8E93]"
             >
               Government health warning
             </label>

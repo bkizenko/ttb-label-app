@@ -53,6 +53,20 @@ You should see the TTB Label Verification app. Use **“Not sure where to start?
 
 ---
 
+## Test and demo images
+
+The repo includes test/demo images used by the **“Not sure where to start?”** flow. They are in **`public/demo/`**:
+
+- **`public/demo/wine images/`** — Wine (DAOU) labels (JPG, HEIC)
+- **`public/demo/stone's throw/`** — Stone’s Throw IPA (PNG, JPG)
+- **`public/demo/vodka images/`** — Absolut vodka (HEIC, JPG)
+- **`public/demo/old tom distillery test images/`** — Old Tom bourbon (PNG, JPG)
+
+Demo presets in `src/data/presets.ts` reference a subset of these. To list all files:  
+`find public/demo -type f \( -name "*.jpg" -o -name "*.png" -o -name "*.HEIC" \)`
+
+---
+
 ## Image formats
 
 - The app **accepts PNG, JPEG, and WebP**.

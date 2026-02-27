@@ -70,7 +70,7 @@ export function ProcessingOverlay({
           "Government warning",
         ].map((label) => (
           <div key={label} className="flex flex-col gap-2">
-            <span className="text-[17px] font-medium text-[#1C1C1E]">
+            <span className="text-[17px] font-medium text-[#8E8E93]">
               {label}
             </span>
             <div
